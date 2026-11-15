@@ -1,8 +1,29 @@
 {
   "about": "Open bots in the arena, each pinned to a commit. To enter or update a bot, open a pull request that adds or changes its entry; the round-robin re-runs when this file changes. See docs/submitting.md.",
   "open": [
-    {"name": "random", "repo": "", "commit": "", "path": "bots/random"},
-    {"name": "greedy", "repo": "", "commit": "", "path": "bots/greedy"},
-    {"name": "baseline", "repo": "", "commit": "", "path": "bots/baseline"}
+    {
+      "name": "random",
+      "repo": "",
+      "commit": "",
+      "path": "bots/random"
+    },
+    {
+      "name": "greedy",
+      "repo": "",
+      "commit": "",
+      "path": "bots/greedy"
+    },
+    {
+      "name": "baseline",
+      "repo": "",
+      "commit": "",
+      "path": "bots/baseline"
+    },
+    {
+      "name": "automerge-test",
+      "repo": "https://github.com/collinjackson/libaw-arena",
+      "commit": "793b9689acd04c5d0b510a6be10268adfb6c22a2",
+      "path": "bots/greedy"
+    }
   ]
 }
