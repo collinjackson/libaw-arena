@@ -51,7 +51,7 @@ jobs:
           gh pr view "$PR" --json files -q '.files[].path' > files.txt
           gh api "repos/${{ github.repository }}/contents/bots.json?ref=$BASE" -q .content | base64 -d > base.json
           gh api "repos/${{ github.repository }}/contents/bots.json?ref=$SHA" -q .content | base64 -d > head.json
-          if scripts/automerge.py eligible base.json head.json "$AUTHOR" files.txt verdict/verdict.json > why.txt; then
+          if python3 scripts/automerge.py eligible base.json head.json "$AUTHOR" files.txt verdict/verdict.json > why.txt; then
             echo "merge=yes" >> "$GITHUB_OUTPUT"
           else
             echo "merge=no" >> "$GITHUB_OUTPUT"
