@@ -5,7 +5,7 @@ name: round-robin
 on:
   push:
     branches: [main]
-    paths: ["bots.json", "bots/**", "crates/**", "maps/**", "Cargo.lock", ".github/workflows/round-robin.yml"]
+    paths: ["bots.json", "modes.json", "bots/**", "crates/**", "maps/**", "Cargo.lock", ".github/workflows/round-robin.yml"]
   workflow_dispatch:
     inputs:
       seed:
