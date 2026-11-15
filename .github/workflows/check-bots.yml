@@ -21,11 +21,11 @@ jobs:
         with:
           fetch-depth: 0
       - name: Check bots.json
-        run: scripts/build_registry.py --check
+        run: python3 scripts/build_registry.py --check
       - name: Rust (the pinned toolchain in rust-toolchain.toml, with the wasm target)
         run: rustup toolchain install
       - name: Build the changed bots at their commits
-        run: scripts/build_registry.py --changed-since "origin/${{ github.base_ref }}"
+        run: python3 scripts/build_registry.py --changed-since "origin/${{ github.base_ref }}"
       - uses: actions/upload-artifact@v4
         with:
           name: modules
@@ -62,7 +62,7 @@ jobs:
       - name: Verdict (every game verifies, no strikes, real moves from each changed bot)
         run: |
           mkdir -p out/verdict
-          scripts/automerge.py verdict out/check bots/out/changed.json > out/verdict/verdict.json || true
+          python3 scripts/automerge.py verdict out/check bots/out/changed.json > out/verdict/verdict.json || true
           jq . out/verdict/verdict.json
           jq -e .ok out/verdict/verdict.json
       - uses: actions/upload-artifact@v4
