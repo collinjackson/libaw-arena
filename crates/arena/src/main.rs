@@ -130,6 +130,17 @@ fn game(start: &State, names: &[(String, String)], n: u64, o: &Opts) -> Value {
     rec
 }
 
+/// Links for the page from the Actions environment (GITHUB_*), or ARENA_REPO locally.
+fn page_links() -> arena::page::Links {
+    let env = |k: &str| std::env::var(k).ok().filter(|v| !v.is_empty());
+    let server = env("GITHUB_SERVER_URL").unwrap_or_else(|| "https://github.com".into());
+    let repo = env("ARENA_REPO")
+        .or_else(|| env("GITHUB_REPOSITORY").map(|r| format!("{server}/{r}")))
+        .unwrap_or_else(|| "https://github.com/collinjackson/libaw-arena".into());
+    let run = env("GITHUB_RUN_ID").map(|id| format!("{repo}/actions/runs/{id}"));
+    arena::page::Links { repo, run, when: env("ARENA_WHEN") }
+}
+
 /// Writes a record's storyboards into `dir` as turn-NNN.json and returns them.
 fn storyboards(rec: &Value, dir: &str) -> Vec<Value> {
     let sbs = arena::storyboard::turns(rec).unwrap_or_else(|e| die(&e));
@@ -193,7 +204,7 @@ fn main() {
                     result: g["result"].clone(), teams, turns,
                 });
             }
-            std::fs::write(format!("{site}/index.html"), arena::page::render(&st, &games)).unwrap_or_else(|e| die(&e.to_string()));
+            std::fs::write(format!("{site}/index.html"), arena::page::render(&st, &games, &page_links())).unwrap_or_else(|e| die(&e.to_string()));
             println!("{} games in {site}/index.html", games.len());
         }
         "round-robin" => {

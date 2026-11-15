@@ -1,0 +1,5 @@
+# Pinned so a bot's commit builds to the same module years from now, and the referee too.
+# Bumping it rebuilds every bot (the build cache is keyed on it); do it between seasons.
+[toolchain]
+channel = "1.99.1"
+targets = ["wasm32-unknown-unknown"]

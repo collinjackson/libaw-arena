@@ -4,3 +4,4 @@ bots/*/target/
 bots/out/
 bots/work/
 bots/cache/
+__pycache__/

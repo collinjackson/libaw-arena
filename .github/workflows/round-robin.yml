@@ -15,14 +15,17 @@ on:
     - cron: "0 12 * * 1"
 permissions:
   contents: read
+concurrency:
+  group: round-robin
+  cancel-in-progress: false
 jobs:
   play:
     runs-on: ubuntu-latest
     timeout-minutes: 60
     steps:
       - uses: actions/checkout@v4
-      - name: Rust with the wasm target
-        run: rustup target add wasm32-unknown-unknown
+      - name: Rust (the pinned toolchain in rust-toolchain.toml, with the wasm target)
+        run: rustup toolchain install
       # Bots compile once per (repo, commit, path, toolchain); runs after that reuse the module.
       - uses: actions/cache@v4
         with:
@@ -71,7 +74,7 @@ jobs:
             data
       - name: The standings page, with every turn in libaw's replay viewer
         run: |
-          ./target/release/arena page out/rr --out out/site
+          ARENA_WHEN="$(date -u '+%Y-%m-%d %H:%M UTC')" ./target/release/arena page out/rr --out out/site
           mkdir -p out/site/libaw && cp -r libaw-src/web libaw-src/data out/site/libaw/
       - uses: actions/upload-artifact@v4
         with:
@@ -80,3 +83,21 @@ jobs:
             out/rr/
             out/site/
             bots/out/
+      # The site: every event replaces it. Published from main only.
+      - uses: actions/upload-pages-artifact@v3
+        if: github.ref == 'refs/heads/main'
+        with:
+          path: out/site
+  publish:
+    needs: play
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - id: deploy
+        uses: actions/deploy-pages@v4

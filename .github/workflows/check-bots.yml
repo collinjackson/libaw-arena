@@ -18,8 +18,8 @@ jobs:
           fetch-depth: 0
       - name: Check bots.json
         run: scripts/build_registry.py --check
-      - name: Rust with the wasm target
-        run: rustup target add wasm32-unknown-unknown
+      - name: Rust (the pinned toolchain in rust-toolchain.toml, with the wasm target)
+        run: rustup toolchain install
       # Bots compile once per (repo, commit, path, toolchain); runs after that reuse the module.
       - uses: actions/cache@v4
         with:

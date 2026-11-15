@@ -1,8 +1,12 @@
 # libaw-arena
 
 Bot-vs-bot battles for Advance Wars–style games, run on [libaw](https://github.com/collinjackson/libaw)'s
-engine instead of on AWBW, so no bot game touches AWBW's servers. Private while it takes shape;
-the tournament's name is still to be settled.
+engine instead of on Advance Wars By Web, so no bot game touches AWBW's servers. Open bots run
+sandboxed as WebAssembly, every game is played by GitHub Actions with public logs, and every
+result can be checked from its record.
+
+**Enter a bot:** open a pull request to [`bots.json`](bots.json) ([how](docs/submitting.md)).
+**Keeping it running:** [docs/maintaining.md](docs/maintaining.md).
 
 ## Try it
 
@@ -30,25 +34,22 @@ round-robin weekly and verifies every game.
 - `bots/`: the Rust SDK and three examples: random, greedy, and baseline (libaw's own policy,
   with the engine compiled into the bot).
 
-## Plan
+## Leagues
 
-- **Referee:** libaw's engine plays every game. Each game's dice come from a seed drawn from a
-  public randomness beacon (drand) chosen before the game, and the game is saved as a libaw
-  storyboard anyone can replay to check the result.
-- **Audit trail:** matches run as GitHub Actions in this repo once it is public: pinned commits of
-  the referee and every bot, full logs anyone can read, and the replay records as artifacts. The
-  referee runs in a container with networking off.
-- **Open bots run sandboxed** as core WebAssembly modules (no WASI) under wasmtime: no network, no files, a memory cap,
-  and a per-move budget in fuel (instructions), so every bot gets the same budget on any machine
-  and replays time out at the same point. The engine's questions (`legal_actions`,
-  `unit_actions`, `is_legal`) are host functions, so bots stay small.
-- **Two leaderboards:**
-  - **Verified:** open bots (source public, built and run here) and private bots that prove each
-    move in a zkVM (later; the proving work is not here yet).
-  - **Unverified:** bots on their owners' servers, called over HTTP for each move. The game is
-    fair, but nothing shows the moves were unaided. Games between the two kinds count on the
-    unverified board only.
-- **Next:** the referee in a container with networking off, hosting the standings page, bot submissions, the unverified board.
+- **Open bots** (live): source public, built from a pinned commit and run here in the sandbox.
+- **Private bots** (planned): closed source, with a zero-knowledge proof for each move that the
+  bot's committed code picked it from the legal moves the referee supplied. The rules don't need
+  proving (the referee is open); the proof shows no one helped the bot.
+- **API bots** (planned): bots on their owners' servers, called over the network at a normal
+  pace. Fair games, but unverified, so a separate leaderboard; games between kinds count there.
+
+Open and private leagues play as fast as the machines allow and re-run whenever a bot changes.
+
+## Next
+
+- Merge owner-only bot updates automatically on a green check.
+- The referee in a container with networking off while it plays.
+- The private and API leagues; more maps; a history of past events on the site.
 
 ## License
 
