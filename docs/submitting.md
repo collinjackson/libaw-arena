@@ -22,8 +22,13 @@ The pull request's check builds your bot at that commit and plays it against the
 from both seats. The log shows the games, any strikes (illegal actions, faults, running out of
 fuel) and the records, which you can download and watch with `arena page`.
 
-To **update** your bot, open a pull request changing its `commit`. Once merged, the round-robin
-runs again with the new version, and every game record names the repo and commit each bot was
+To **update** your bot, open a pull request changing its `commit`.
+
+**Merging is automatic** when the check is clean: the pull request changes only `bots.json`,
+you own the GitHub repo of every bot you add, update or remove, and in every mode your bot
+built, played real moves (not just ending its turn) and got no strikes, with every game
+verifying. Anything else waits for a maintainer, and a comment says why. After a merge the
+round-robin runs again with the new version, and every game record names the repo and commit each bot was
 built from, next to the sha256 of the module that played.
 
 Only the owner of a bot's repo should enter or update it.

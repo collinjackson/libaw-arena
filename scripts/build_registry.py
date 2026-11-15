@@ -119,6 +119,8 @@ def main(argv):
         changed = {b["name"] for b in reg["open"] if before.get(b["name"]) != b}
         only = changed | {b["name"] for b in reg["open"] if not b.get("repo")}
         print("changed: " + (", ".join(sorted(changed)) or "none"))
+        os.makedirs(os.path.join(ROOT, "bots", "out"), exist_ok=True)
+        json.dump(sorted(changed), open(os.path.join(ROOT, "bots", "out", "changed.json"), "w"))
     work = os.path.join(ROOT, "bots", "work")
     os.makedirs(os.path.join(ROOT, "bots", "out"), exist_ok=True)
     os.makedirs(work, exist_ok=True)

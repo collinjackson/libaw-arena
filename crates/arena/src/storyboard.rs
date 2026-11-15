@@ -2,9 +2,8 @@
 //! viewer (web/replay.html) can play them. The steps come from replaying the record and
 //! comparing the state before and after each action.
 
-use crate::referee::Dice;
+use crate::referee::{action_for_mover, Dice};
 use libaw::actions::{Action, Then};
-use libaw::awbw::action_from_contract;
 use libaw::{Hp, State, Unit};
 use serde_json::{json, Value};
 
@@ -79,7 +78,7 @@ pub fn turns(rec: &Value) -> Result<Vec<Value>, String> {
     let finish = |ts: &State, steps: Vec<Value>| json!({"format": "libaw-storyboard", "version": 1, "day": ts.day,
         "player": ts.current, "names": names, "countries": countries, "start": ts, "steps": steps});
     for (i, m) in rec["moves"].as_array().ok_or("no moves")?.iter().enumerate() {
-        let a = action_from_contract(&s, &m["action"]).map_err(|e| format!("move {i}: {e}"))?;
+        let a = action_for_mover(&s, &m["action"]).map_err(|e| format!("move {i}: {e}"))?;
         let before = s.clone();
         dice.step(&mut s, &a).map_err(|e| format!("move {i}: {e}"))?;
         turn_steps.extend(steps(&before, &s, &a, &m["action"]));

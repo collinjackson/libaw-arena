@@ -1,7 +1,11 @@
 # A pull request that adds or updates a bot in bots.json: checks the entry, builds the bot at its
-# pinned commit, and plays it against the example bots (both seats, a fixed seed), so the
-# submitter sees right away whether it loads, plays legal moves and stays within its fuel.
-# Runs with a read-only token and no secrets: the bot's code is built and run, nothing else.
+# pinned commit, and plays it against the example bots in every mode (both seats, a fixed seed),
+# so the submitter sees right away whether it loads, plays real, legal moves and stays within
+# its fuel. The verdict it uploads lets auto-merge.yml merge clean updates by a bot's owner.
+#
+# The bot's build runs its own code (build scripts), so it has a job to itself; the games run
+# in a fresh job that only runs our referee on the built modules, and that job writes the
+# verdict. Both have a read-only token and no secrets.
 name: check-bots
 on:
   pull_request:
@@ -9,7 +13,7 @@ on:
 permissions:
   contents: read
 jobs:
-  check:
+  build:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
@@ -20,34 +24,54 @@ jobs:
         run: scripts/build_registry.py --check
       - name: Rust (the pinned toolchain in rust-toolchain.toml, with the wasm target)
         run: rustup toolchain install
-      # Bots compile once per (repo, commit, path, toolchain); runs after that reuse the module.
-      - uses: actions/cache@v4
+      - name: Build the changed bots at their commits
+        run: scripts/build_registry.py --changed-since "origin/${{ github.base_ref }}"
+      - uses: actions/upload-artifact@v4
         with:
-          path: bots/cache
-          key: bots-${{ github.run_id }}
-          restore-keys: bots-
+          name: modules
+          path: |
+            bots/out/*.wasm
+            bots/out/manifest.json
+            bots/out/changed.json
+  play:
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - name: Rust (the pinned toolchain)
+        run: rustup toolchain install
       - uses: actions/cache@v4
         with:
           path: |
             ~/.cargo/registry
             target
           key: referee-${{ hashFiles('Cargo.lock') }}
-      - name: Build the referee and the changed bots at their commits
-        run: |
-          cargo build --release --locked
-          scripts/build_registry.py --changed-since "origin/${{ github.base_ref }}"
-      - name: Play them against the examples
+      - name: Build the referee
+        run: cargo build --release --locked
+      - uses: actions/download-artifact@v4
+        with:
+          name: modules
+          path: bots/out
+      - name: Play them against the examples in every mode
         run: |
           for m in $(jq -r '.[].name' modes.json); do
             echo "== $m"
             ./target/release/arena round-robin --map maps/skirmish.json --mode "$m" --seed 1 --out "out/check/$m" --manifest bots/out/manifest.json
-            echo "Strikes (illegal actions, faults, fuel) per game:"
-            jq -r '.games[] | .file' "out/check/$m/standings.json" | while read -r f; do
-              echo "  $f: $(jq -c .strikes "out/check/$m/$f")"
-            done
           done
-          ./target/release/arena verify out/check/*/game-*.json
+      - name: Verdict (every game verifies, no strikes, real moves from each changed bot)
+        run: |
+          mkdir -p out/verdict
+          scripts/automerge.py verdict out/check bots/out/changed.json > out/verdict/verdict.json || true
+          jq . out/verdict/verdict.json
+          jq -e .ok out/verdict/verdict.json
       - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: verdict
+          path: out/verdict/verdict.json
+      - uses: actions/upload-artifact@v4
+        if: always()
         with:
           name: check-${{ github.event.pull_request.number }}
           path: out/check/

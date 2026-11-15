@@ -49,7 +49,6 @@ changes.
 
 ## Next
 
-- Merge owner-only bot updates automatically on a green check.
 - The referee in a container with networking off while it plays.
 - The private and API leagues; more maps; a history of past events on the site.
 

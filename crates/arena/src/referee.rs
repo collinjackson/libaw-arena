@@ -64,6 +64,27 @@ pub fn beacon_seed(randomness: &str, game: u64) -> u64 {
     u64::from_be_bytes(h[..8].try_into().unwrap())
 }
 
+/// Whether `a` is a legal action for the seat to move. In fog a bot can only judge by what it
+/// sees, so legality is checked against its view; a move into an enemy it couldn't see is then
+/// played as AWBW does, stopping short and waiting (a trap; libaw's sim applies it).
+pub fn legal_for_mover(s: &State, a: &Action) -> bool {
+    if s.fog {
+        is_legal(&fog::player_view(s, s.current), a)
+    } else {
+        is_legal(s, a)
+    }
+}
+
+/// Reads an action's JSON as the seat to move would: against its view in fog (see
+/// `legal_for_mover`), against the game otherwise.
+pub fn action_for_mover(s: &State, v: &Value) -> Result<Action, String> {
+    if s.fog {
+        action_from_contract(&fog::player_view(s, s.current), v).map_err(|e| e.to_string())
+    } else {
+        action_from_contract(s, v).map_err(|e| e.to_string())
+    }
+}
+
 /// How the game ended: the winning team (None for a draw), why, and on which day.
 fn outcome(s: &State, rules: &Rules) -> Option<Value> {
     if let Some(t) = sim::winner(s) {
@@ -92,8 +113,8 @@ pub fn play(start: &State, bots: &mut BTreeMap<PlayerId, WasmBot>, seed: u64, ru
         *fuel.entry(me).or_default() += reply.fuel_used;
         // The bot's action, if it gave a legal one; otherwise its turn ends.
         let (a, note) = match &reply.action {
-            Ok(v) => match action_from_contract(&s, v) {
-                Ok(a) if is_legal(&s, &a) => (a, None),
+            Ok(v) => match action_for_mover(&s, v) {
+                Ok(a) if legal_for_mover(&s, &a) => (a, None),
                 Ok(_) => (Action::EndTurn, Some("illegal action".to_string())),
                 Err(e) => (Action::EndTurn, Some(format!("bad action: {e}"))),
             },
@@ -165,8 +186,8 @@ pub fn verify(rec: &Value) -> Result<Value, String> {
         if m["seat"].as_u64() != Some(s.current as u64) {
             return Err(format!("move {i}: seat {} moved on {}'s turn", m["seat"], s.current));
         }
-        let a = action_from_contract(&s, &m["action"]).map_err(|e| format!("move {i}: {e}"))?;
-        if a != Action::EndTurn && !is_legal(&s, &a) {
+        let a = action_for_mover(&s, &m["action"]).map_err(|e| format!("move {i}: {e}"))?;
+        if a != Action::EndTurn && !legal_for_mover(&s, &a) {
             return Err(format!("move {i}: not legal"));
         }
         // A refused action was recorded only as the end turn that followed it.

@@ -118,13 +118,37 @@ fn a_beacon_seed_is_checked() {
 
 #[test]
 fn modes_set_fog_and_funds() {
+    // The skirmish map: the first player (101) has 4 income properties, credited on day 1.
     let mut s = skirmish();
-    arena::apply_mode(&mut s, &json!({"name": "x", "fog": true, "starting_funds": 50000, "funds_per_property": 2000}));
+    assert_eq!(s.player(101).unwrap().funds, 4000);
+    arena::apply_mode(&mut s, &json!({"name": "high-funds", "fog": true, "starting_funds": 0, "funds_per_property": 2000}));
     assert!(s.fog);
-    assert!(s.players.iter().all(|p| p.funds == 50000));
     assert_eq!(s.funds_per_property, 2000);
-    let before = skirmish();
+    assert_eq!(s.player(101).unwrap().funds, 8000); // day-1 income at 2,000 a property
+    assert_eq!(s.player(102).unwrap().funds, 0);
     let mut same = skirmish();
     arena::apply_mode(&mut same, &json!({"name": "standard"}));
-    assert_eq!(libaw::view::state_hash(&same), libaw::view::state_hash(&before));
+    assert_eq!(libaw::view::state_hash(&same), libaw::view::state_hash(&skirmish()));
+}
+
+#[test]
+fn in_fog_a_move_into_an_unseen_enemy_is_a_trap_not_a_strike() {
+    // Bots judge legality by their own view; moves into hidden units stop short (AWBW's trap).
+    let dir = concat!(env!("CARGO_MANIFEST_DIR"), "/../../bots/out");
+    let (Ok(g), Ok(b)) = (std::fs::read(format!("{dir}/greedy.wasm")), std::fs::read(format!("{dir}/baseline.wasm"))) else {
+        eprintln!("skipped: run scripts/build_registry.py first");
+        return;
+    };
+    let mut s = skirmish();
+    arena::apply_mode(&mut s, &json!({"name": "fog", "fog": true}));
+    for seed in [3, 4] {
+        let mut bots = BTreeMap::from([
+            (101, WasmBot::new("greedy", &g, Limits::default()).unwrap()),
+            (102, WasmBot::new("baseline", &b, Limits::default()).unwrap()),
+        ]);
+        let rec = play(&s, &mut bots, seed, Rules::default());
+        assert_eq!(rec["strikes"], json!({}), "seed {seed}");
+        assert_eq!(verify(&rec).unwrap(), rec["result"]);
+        assert!(arena::storyboard::turns(&rec).is_ok());
+    }
 }

@@ -1,5 +1,5 @@
 [
   {"name": "standard", "title": "Standard"},
-  {"name": "high-funds", "title": "High Funds", "starting_funds": 50000},
+  {"name": "high-funds", "title": "High Funds", "starting_funds": 0, "funds_per_property": 2000},
   {"name": "fog", "title": "Fog", "fog": true}
 ]

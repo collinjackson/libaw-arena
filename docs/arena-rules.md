@@ -29,7 +29,7 @@ and checks the result and the final state. Anyone can check any game this way.
 ## Modes
 
 Every event plays each pair in every mode in [`modes.json`](../modes.json): Standard (the map as
-it is), High Funds (each player starts with high funds) and Fog (each bot sees only what its
+it is), High Funds (AWBW's rules: no starting funds, 2,000 a turn per income property instead of 1,000) and Fog (each bot sees only what its
 units and buildings see; the referee and the records see everything, and the replays are
 published only after the event). The leaderboard shows each bot's win rate per mode. A mode
 is `{"name", "title"}` plus any of `fog` (bool), `starting_funds` and `funds_per_property`.

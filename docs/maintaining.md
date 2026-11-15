@@ -14,10 +14,10 @@ What the arena runs on, what needs a maintainer, and how to fork it.
 
 ## What needs a person
 
-- **Reviewing new bots** in `bots.json`: a name that isn't misleading, a public repo, and an
-  entry made by the repo's owner. The pull request's check has already built the bot and played
-  it, so review is a glance.
-- **Updates to a bot** change only its `commit` and can be merged on a green check.
+- **Names:** auto-merge can't judge a misleading or rude bot name; rename or remove one by
+  pull request if needed.
+- **Updates and new bots by their owners** merge themselves when the check is clean
+  (`auto-merge.yml`, rules in `scripts/automerge.py`). The rest wait for a maintainer.
 - **Rule or engine changes** (the libaw version in Cargo.lock, rust-toolchain.toml, the map
   pool) are seasons: change them on purpose, all at once, and say so in the release notes,
   because they change every bot's results.
