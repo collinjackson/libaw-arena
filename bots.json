@@ -18,12 +18,6 @@
       "repo": "",
       "commit": "",
       "path": "bots/baseline"
-    },
-    {
-      "name": "automerge-test",
-      "repo": "https://github.com/collinjackson/libaw-arena",
-      "commit": "793b9689acd04c5d0b510a6be10268adfb6c22a2",
-      "path": "bots/greedy"
     }
   ]
 }
