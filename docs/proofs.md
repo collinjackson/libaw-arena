@@ -39,13 +39,14 @@ the proof against drand's signature, so the referee needs no secret.
 
 ## Sizes
 
-libaw's referee, as a RISC-V guest, in RISC Zero's RV32IM user cycles (Nov 2026):
+libaw's referee, as a RISC-V guest, in RISC Zero's RV32IM user cycles (Nov 2026), on
+[libaw-zkbench](https://github.com/collinjackson/libaw-zkbench)'s synthetic mid-game workloads:
 
 | Workload | Cycles |
 | --- | --- |
-| One move | 6.84M |
-| One turn | 45.5M |
-| One game | about 4.9B |
+| One move | 4.6M |
+| One turn (18 actions) | 28.9M |
+| 15 days (684 actions) | 1.5B |
 
 A game is far too large for one monolithic proof on a laptop, which is why the plan proves turns
 and aggregates them.
@@ -53,7 +54,7 @@ and aggregates them.
 ## Prover
 
 The first target is [Jolt](https://github.com/a16z/jolt): MIT-licensed, fast, and actively
-developed. At git 8a92874 a turn is 106.4M RV64IMAC cycles and takes 12.9 GB to trace. Jolt has
+developed. At git 8a92874, on an earlier and busier benchmark turn, it took 106.4M RV64IMAC cycles and 12.9 GB to trace. Jolt has
 no folding or continuations today. Recursion means running the Jolt verifier as a guest
 (`examples/recursion`, Dory commitments). For long runs Jolt's stated direction is a streaming
 prover with bounded memory, which would let chunks grow from turns to longer stretches.
