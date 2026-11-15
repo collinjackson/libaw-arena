@@ -7,6 +7,11 @@ An entry is {"name", "repo", "commit", "path"}: repo is https://github.com/OWNER
 a full 40-hex commit id; path is the bot's crate inside the repo ("." by default). An empty repo
 and commit mean a bot in this repo, built at this repo's own commit.
 
+Each module is built once and kept in bots/cache/, named for what it was built from (repo,
+commit, path and the Rust toolchain), so later runs reuse it instead of compiling again; the
+workflows keep bots/cache between runs. A bot in this repo is keyed by the last commit that
+touched it or the SDK.
+
 Usage: scripts/build_registry.py [--only NAME,...] [--changed-since REF] [--check]
   --check validates bots.json without building.
   --changed-since REF builds the bots whose entries differ from bots.json at git REF, plus this
@@ -47,9 +52,33 @@ def run(*cmd, cwd=None):
     subprocess.run(cmd, cwd=cwd, check=True)
 
 
+def git(*args, cwd=ROOT):
+    return subprocess.run(["git", *args], cwd=cwd, capture_output=True, text=True).stdout.strip()
+
+
+def toolchain():
+    return subprocess.run(["rustc", "--version"], capture_output=True, text=True).stdout.strip()
+
+
+def cache_key(b, repo, commit):
+    """What a module was built from, hashed: the same key means the same build inputs."""
+    path = b.get("path", ".")
+    if not repo:  # a bot in this repo: the last commit touching it or the SDK
+        commit = git("log", "-1", "--format=%H", "--", path, "bots/sdk") or commit
+    h = hashlib.sha256(json.dumps([repo, commit, path, toolchain()]).encode()).hexdigest()[:24]
+    return f"{b['name']}-{h}"
+
+
 def build(b, work):
-    """Returns (wasm path, repo, commit) for one entry."""
+    """Returns (wasm path, repo, commit, cached) for one entry."""
     repo, commit, path = b.get("repo", ""), b.get("commit", ""), b.get("path", ".")
+    out = os.path.join(ROOT, "bots", "out", b["name"] + ".wasm")
+    shown_repo = repo or (os.environ.get("GITHUB_SERVER_URL", "") and f"{os.environ['GITHUB_SERVER_URL']}/{os.environ.get('GITHUB_REPOSITORY', '')}")
+    shown_commit = commit or git("rev-parse", "HEAD")
+    cached = os.path.join(ROOT, "bots", "cache", cache_key(b, repo, commit) + ".wasm")
+    if os.path.exists(cached):
+        shutil.copyfile(cached, out)
+        return out, shown_repo, shown_commit, True
     if repo:
         src = os.path.join(work, b["name"])
         shutil.rmtree(src, ignore_errors=True)
@@ -58,8 +87,6 @@ def build(b, work):
         run("git", "checkout", "-q", "FETCH_HEAD", cwd=src)
     else:
         src = ROOT
-        repo = os.environ.get("GITHUB_SERVER_URL", "") and f"{os.environ['GITHUB_SERVER_URL']}/{os.environ.get('GITHUB_REPOSITORY', '')}"
-        commit = subprocess.run(["git", "rev-parse", "HEAD"], cwd=ROOT, capture_output=True, text=True).stdout.strip()
     crate = os.path.join(src, path)
     target = os.path.join(work, "target-" + b["name"])
     run("cargo", "build", "--release", "--quiet", "--target", "wasm32-unknown-unknown",
@@ -68,9 +95,10 @@ def build(b, work):
     wasms = [f for f in os.listdir(rel) if f.endswith(".wasm")]
     if len(wasms) != 1:
         raise SystemExit(f"{b['name']}: expected one .wasm from the build, got {wasms}")
-    out = os.path.join(ROOT, "bots", "out", b["name"] + ".wasm")
-    shutil.copyfile(os.path.join(rel, wasms[0]), out)
-    return out, repo, commit
+    os.makedirs(os.path.dirname(cached), exist_ok=True)
+    shutil.copyfile(os.path.join(rel, wasms[0]), cached)
+    shutil.copyfile(cached, out)
+    return out, shown_repo, shown_commit, False
 
 
 def main(argv):
@@ -98,10 +126,10 @@ def main(argv):
     for b in reg["open"]:
         if only and b["name"] not in only:
             continue
-        wasm, repo, commit = build(b, work)
+        wasm, repo, commit, hit = build(b, work)
         sha = hashlib.sha256(open(wasm, "rb").read()).hexdigest()
         manifest.append({"name": b["name"], "wasm": os.path.relpath(wasm, ROOT), "repo": repo, "commit": commit, "sha256": sha})
-        print(f"{b['name']}: {repo or 'this repo'}@{commit[:12]} -> {os.path.relpath(wasm, ROOT)} {os.path.getsize(wasm)} bytes sha256 {sha[:16]}")
+        print(f"{b['name']}: {repo or 'this repo'}@{commit[:12]} {'cached' if hit else 'built'} -> {os.path.relpath(wasm, ROOT)} {os.path.getsize(wasm)} bytes sha256 {sha[:16]}")
     json.dump(manifest, open(os.path.join(ROOT, "bots", "out", "manifest.json"), "w"), indent=1)
 
 

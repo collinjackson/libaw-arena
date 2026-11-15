@@ -3,3 +3,4 @@ target/
 bots/*/target/
 bots/out/
 bots/work/
+bots/cache/

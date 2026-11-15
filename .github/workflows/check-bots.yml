@@ -20,6 +20,18 @@ jobs:
         run: scripts/build_registry.py --check
       - name: Rust with the wasm target
         run: rustup target add wasm32-unknown-unknown
+      # Bots compile once per (repo, commit, path, toolchain); runs after that reuse the module.
+      - uses: actions/cache@v4
+        with:
+          path: bots/cache
+          key: bots-${{ github.run_id }}
+          restore-keys: bots-
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            target
+          key: referee-${{ hashFiles('Cargo.lock') }}
       - name: Build the referee and the changed bots at their commits
         run: |
           cargo build --release --locked
