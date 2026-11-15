@@ -24,8 +24,11 @@ fuel) and the records, which you can download and watch with `arena page`.
 
 To **update** your bot, open a pull request changing its `commit`.
 
-**Merging is automatic** when the check is clean: the pull request changes only `bots.json`,
-you own the GitHub repo of every bot you add, update or remove, and in every mode your bot
+**One bot per pull request**, with only the four fields above.
+
+**Merging is automatic** when the check is clean: the pull request changes only `bots.json`
+and only one bot in it, you own the bot's GitHub repo (to remove a bot: you own its repo or
+you're the one who added it), the file is valid JSON with nothing else changed, and in every mode your bot
 built, played real moves (not just ending its turn) and got no strikes, with every game
 verifying. Anything else waits for a maintainer, and a comment says why. After a merge the
 round-robin runs again with the new version, and every game record names the repo and commit each bot was

@@ -1,6 +1,6 @@
 # Merges a pull request to bots.json on its own when check-bots passed and the change is the
-# kind a maintainer would wave through: only bots.json changed, the author owns the repo of every
-# bot they add, update or remove, and the check's games were clean for exactly those bots
+# kind a maintainer would wave through: only bots.json changed, one bot, no new fields, the author
+# owns the bot's repo (or, to remove it, added it), and the check's games were clean for exactly those bots
 # (scripts/automerge.py). Then it starts the round-robin, so the new version plays at once.
 # Anything else waits for a maintainer, with the reasons in a comment.
 #
@@ -26,6 +26,8 @@ jobs:
       SHA: ${{ github.event.workflow_run.head_sha }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # bots.json's history: who added a bot that a pull request removes
       - name: The pull request this check ran on (still at the same commit)
         id: pr
         run: |
