@@ -1,6 +1,6 @@
 # Keeping the arena running
 
-The arena is built to keep going with little or no one minding it.
+What the arena runs on, what needs a maintainer, and how to fork it.
 
 ## What runs, and what it costs
 
@@ -22,7 +22,7 @@ The arena is built to keep going with little or no one minding it.
   pool) are seasons: change them on purpose, all at once, and say so in the release notes,
   because they change every bot's results.
 
-## If no one is maintaining it
+## Forking
 
 - Every game record replays without us: `arena verify GAME.json` needs only the record.
 - Everything pins what it builds: bots by commit, the referee's dependencies by Cargo.lock, Rust
