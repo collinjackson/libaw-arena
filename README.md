@@ -12,10 +12,10 @@ result can be checked from its record.
 
     rustup target add wasm32-unknown-unknown
     cargo build --release && scripts/build_registry.py
-    ./target/release/arena round-robin --map maps/skirmish.json --manifest bots/out/manifest.json --out out/rr
+    ./target/release/arena round-robin --map maps/skirmish.json --mode fog --manifest bots/out/manifest.json --out out/rr
     ./target/release/arena verify out/rr/game-*.json
 
-`arena page out/rr --out out/site` makes a standings page linking every turn into libaw's
+`arena page out/rr/standard out/rr/fog ... --out out/site` makes a standings page linking every turn into libaw's
 replay viewer (the workflow adds the viewer; locally, link libaw's `web` and `data` into
 `out/site/libaw/`). Or one game: `arena storyboards out/rr/GAME.json --out out/sb` writes
 one storyboard per turn; serve a folder holding both repos and open
@@ -43,7 +43,9 @@ round-robin weekly and verifies every game.
 - **API bots** (planned): bots on their owners' servers, called over the network at a normal
   pace. Fair games, but unverified, so a separate leaderboard; games between kinds count there.
 
-Open and private leagues play as fast as the machines allow and re-run whenever a bot changes.
+Each league plays Standard, High Funds and Fog ([modes.json](modes.json)) and shows win rates
+per mode. Open and private leagues play as fast as the machines allow and re-run whenever a bot
+changes.
 
 ## Next
 

@@ -115,3 +115,16 @@ fn a_beacon_seed_is_checked() {
     rec["beacon"]["game"] = json!(4);
     assert!(verify(&rec).unwrap_err().contains("drand"));
 }
+
+#[test]
+fn modes_set_fog_and_funds() {
+    let mut s = skirmish();
+    arena::apply_mode(&mut s, &json!({"name": "x", "fog": true, "starting_funds": 50000, "funds_per_property": 2000}));
+    assert!(s.fog);
+    assert!(s.players.iter().all(|p| p.funds == 50000));
+    assert_eq!(s.funds_per_property, 2000);
+    let before = skirmish();
+    let mut same = skirmish();
+    arena::apply_mode(&mut same, &json!({"name": "standard"}));
+    assert_eq!(libaw::view::state_hash(&same), libaw::view::state_hash(&before));
+}

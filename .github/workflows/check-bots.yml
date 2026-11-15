@@ -38,12 +38,15 @@ jobs:
           scripts/build_registry.py --changed-since "origin/${{ github.base_ref }}"
       - name: Play them against the examples
         run: |
-          ./target/release/arena round-robin --map maps/skirmish.json --seed 1 --out out/check --manifest bots/out/manifest.json
-          ./target/release/arena verify out/check/game-*.json
-          echo "Strikes (illegal actions, faults, fuel) per game:"
-          jq -r '.games[] | .file' out/check/standings.json | while read -r f; do
-            echo "  $f: $(jq -c .strikes "out/check/$f")"
+          for m in $(jq -r '.[].name' modes.json); do
+            echo "== $m"
+            ./target/release/arena round-robin --map maps/skirmish.json --mode "$m" --seed 1 --out "out/check/$m" --manifest bots/out/manifest.json
+            echo "Strikes (illegal actions, faults, fuel) per game:"
+            jq -r '.games[] | .file' "out/check/$m/standings.json" | while read -r f; do
+              echo "  $f: $(jq -c .strikes "out/check/$m/$f")"
+            done
           done
+          ./target/release/arena verify out/check/*/game-*.json
       - uses: actions/upload-artifact@v4
         with:
           name: check-${{ github.event.pull_request.number }}

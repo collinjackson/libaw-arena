@@ -25,3 +25,12 @@ state, every action with the fuel it took, strikes, the result and a hash of the
 
 `arena verify GAME.json` replays a record from its start, seed and actions alone, with no bots,
 and checks the result and the final state. Anyone can check any game this way.
+
+## Modes
+
+Every event plays each pair in every mode in [`modes.json`](../modes.json): Standard (the map as
+it is), High Funds (each player starts with high funds) and Fog (each bot sees only what its
+units and buildings see; the referee and the records see everything, and the replays are
+published only after the event). The leaderboard shows each bot's win rate per mode. A mode
+is `{"name", "title"}` plus any of `fog` (bool), `starting_funds` and `funds_per_property`.
+Game i of the k-th mode is seeded as game i + 1000k, so no two modes share dice.

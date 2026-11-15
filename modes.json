@@ -1,0 +1,5 @@
+[
+  {"name": "standard", "title": "Standard"},
+  {"name": "high-funds", "title": "High Funds", "starting_funds": 50000},
+  {"name": "fog", "title": "Fog", "fog": true}
+]

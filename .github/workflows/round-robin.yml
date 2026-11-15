@@ -62,9 +62,12 @@ jobs:
       - name: Round-robin
         run: |
           ARG="${{ steps.beacon.outputs.arg || format('--seed {0}', github.event.inputs.seed) }}"
-          ./target/release/arena round-robin --map maps/skirmish.json $ARG --out out/rr --manifest bots/out/manifest.json
+          for m in $(jq -r '.[].name' modes.json); do
+            echo "== $m"
+            ./target/release/arena round-robin --map maps/skirmish.json --mode "$m" $ARG --out "out/rr/$m" --manifest bots/out/manifest.json
+          done
       - name: Verify every game from its record
-        run: ./target/release/arena verify out/rr/game-*.json
+        run: ./target/release/arena verify out/rr/*/game-*.json
       - uses: actions/checkout@v4
         with:
           repository: collinjackson/libaw
@@ -74,7 +77,7 @@ jobs:
             data
       - name: The standings page, with every turn in libaw's replay viewer
         run: |
-          ARENA_WHEN="$(date -u '+%Y-%m-%d %H:%M UTC')" ./target/release/arena page out/rr --out out/site
+          ARENA_WHEN="$(date -u '+%Y-%m-%d %H:%M UTC')" ./target/release/arena page $(jq -r '.[].name | "out/rr/" + .' modes.json) --out out/site
           mkdir -p out/site/libaw && cp -r libaw-src/web libaw-src/data out/site/libaw/
       - uses: actions/upload-artifact@v4
         with:

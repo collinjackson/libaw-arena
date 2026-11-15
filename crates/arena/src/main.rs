@@ -3,11 +3,14 @@
 //!   arena play  --map MAP.json --bot NAME=BOT.wasm --bot NAME=BOT.wasm [--seed N] [--days N] [--fuel N] --out GAME.json
 //!   arena verify GAME.json...
 //!   arena storyboards GAME.json --out DIR       (one libaw storyboard per turn, for libaw's replay viewer)
-//!   arena page RR_DIR --out SITE                (a static page of a round-robin; see src/page.rs)
+//!   arena page RR_DIR... --out SITE             (the site: one round-robin per mode; see src/page.rs)
 //!   arena round-robin --map MAP.json --bot NAME=BOT.wasm... [--seed N] [--days N] [--fuel N] --out DIR
 //!
 //! --manifest bots/out/manifest.json (from scripts/build_registry.py) adds its bots, and each
 //! game record names the repo and commit a bot was built from.
+//!
+//! --mode NAME applies one of modes.json's settings (fog, starting funds, funds per property) to
+//! the map; records and standings.json say which. `arena page` takes one round-robin per mode.
 //!
 //! --beacon ROUND:RANDOMNESS (a drand quicknet round, fetched before the games) replaces --seed:
 //! game i's seed is referee::beacon_seed(RANDOMNESS, i), and the record says so for verify.
@@ -37,11 +40,13 @@ struct Opts {
     beacon: Option<(u64, String)>,
     /// Bot name -> {repo, commit}, from --manifest.
     sources: BTreeMap<String, Value>,
+    /// The mode's entry from modes.json, if --mode was given.
+    mode: Option<Value>,
     rest: Vec<String>,
 }
 
 fn opts(args: &[String]) -> Opts {
-    let mut o = Opts { map: None, bots: vec![], seed: 1, rules: Rules::default(), limits: Limits::default(), out: None, beacon: None, sources: BTreeMap::new(), rest: vec![] };
+    let mut o = Opts { map: None, bots: vec![], seed: 1, rules: Rules::default(), limits: Limits::default(), out: None, beacon: None, sources: BTreeMap::new(), mode: None, rest: vec![] };
     let mut i = 0;
     let val = |i: usize| args.get(i + 1).cloned().unwrap_or_else(|| die(&format!("{} needs a value", args[i])));
     while i < args.len() {
@@ -65,6 +70,16 @@ fn opts(args: &[String]) -> Opts {
                     o.bots.push((n.to_string(), w.to_string()));
                     o.sources.insert(n.to_string(), json!({"repo": b["repo"], "commit": b["commit"]}));
                 }
+                i += 1;
+            }
+            "--mode" => {
+                let name = val(i);
+                let modes: Value = serde_json::from_slice(&read("modes.json")).unwrap_or_else(|e| die(&format!("modes.json: {e}")));
+                let all = modes.as_array().cloned().unwrap_or_default();
+                let k = all.iter().position(|m| m["name"] == name.as_str()).unwrap_or_else(|| die(&format!("no mode {name:?} in modes.json")));
+                let mut m = all[k].clone();
+                m["index"] = json!(k);
+                o.mode = Some(m);
                 i += 1;
             }
             "--beacon" => {
@@ -97,6 +112,8 @@ fn seats(start: &State) -> Vec<PlayerId> {
 /// Game number `n` of this run: its seed, from the beacon if there is one, and the record's
 /// "beacon" entry.
 fn seed_for(o: &Opts, n: u64) -> (u64, Value) {
+    // Each mode numbers its games from 1000 x its place in modes.json, so modes never share dice.
+    let n = n + 1000 * o.mode.as_ref().and_then(|m| m["index"].as_u64()).unwrap_or(0);
     match &o.beacon {
         Some((round, x)) => (
             referee::beacon_seed(x, n),
@@ -119,6 +136,9 @@ fn game(start: &State, names: &[(String, String)], n: u64, o: &Opts) -> Value {
     let mut rec = referee::play(start, &mut bots, seed, o.rules);
     if !beacon.is_null() {
         rec["beacon"] = beacon;
+    }
+    if let Some(m) = &o.mode {
+        rec["mode"] = m["name"].clone();
     }
     if let Some(bs) = rec["bots"].as_array_mut() {
         for b in bs {
@@ -157,7 +177,11 @@ fn main() {
     let o = opts(&args[1..]);
     let start = || {
         let m = o.map.clone().unwrap_or_else(|| die("--map MAP.json"));
-        arena::load_state(&String::from_utf8_lossy(&read(&m))).unwrap_or_else(|e| die(&format!("{m}: {e}")))
+        let mut s = arena::load_state(&String::from_utf8_lossy(&read(&m))).unwrap_or_else(|e| die(&format!("{m}: {e}")));
+        if let Some(mode) = &o.mode {
+            arena::apply_mode(&mut s, mode);
+        }
+        s
     };
     match cmd.as_str() {
         "play" => {
@@ -185,27 +209,35 @@ fn main() {
             println!("{n} turns in {dir}");
         }
         "page" => {
-            let rr = o.rest.first().unwrap_or_else(|| die("arena page RR_DIR --out SITE"));
-            let site = o.out.clone().unwrap_or_else(|| die("--out SITE"));
-            let st: Value = serde_json::from_slice(&read(&format!("{rr}/standings.json"))).unwrap_or_else(|e| die(&e.to_string()));
-            std::fs::create_dir_all(format!("{site}/games")).unwrap_or_else(|e| die(&e.to_string()));
-            let mut games = vec![];
-            for g in st["games"].as_array().into_iter().flatten() {
-                let file = g["file"].as_str().unwrap_or_else(|| die("standings.json: a game without a file")).to_string();
-                let bytes = read(&format!("{rr}/{file}"));
-                std::fs::write(format!("{site}/games/{file}"), &bytes).unwrap_or_else(|e| die(&e.to_string()));
-                let rec: Value = serde_json::from_slice(&bytes).unwrap_or_else(|e| die(&format!("{file}: {e}")));
-                let sbs = storyboards(&rec, &format!("{site}/games/{}", file.trim_end_matches(".json")));
-                let start: State = serde_json::from_value(rec["start"].clone()).unwrap_or_else(|e| die(&e.to_string()));
-                let teams = seats(&start).iter().map(|p| start.player(*p).map(|x| x.team.clone()).unwrap_or_default()).collect();
-                let turns = sbs.iter().map(|sb| (sb["day"].as_u64().unwrap_or(0), sb["names"][sb["player"].to_string()].as_str().unwrap_or("?").to_string())).collect();
-                games.push(arena::page::Game {
-                    file, first: g["first"].as_str().unwrap_or("").into(), second: g["second"].as_str().unwrap_or("").into(),
-                    result: g["result"].clone(), teams, turns,
-                });
+            if o.rest.is_empty() {
+                die("arena page RR_DIR... --out SITE (one round-robin per mode)");
             }
-            std::fs::write(format!("{site}/index.html"), arena::page::render(&st, &games, &page_links())).unwrap_or_else(|e| die(&e.to_string()));
-            println!("{} games in {site}/index.html", games.len());
+            let site = o.out.clone().unwrap_or_else(|| die("--out SITE"));
+            let mut events = vec![];
+            for rr in &o.rest {
+                let st: Value = serde_json::from_slice(&read(&format!("{rr}/standings.json"))).unwrap_or_else(|e| die(&e.to_string()));
+                let mode = st["mode"].as_str().unwrap_or("games").to_string();
+                std::fs::create_dir_all(format!("{site}/games/{mode}")).unwrap_or_else(|e| die(&e.to_string()));
+                let mut games = vec![];
+                for g in st["games"].as_array().into_iter().flatten() {
+                    let name = g["file"].as_str().unwrap_or_else(|| die("standings.json: a game without a file")).to_string();
+                    let bytes = read(&format!("{rr}/{name}"));
+                    let file = format!("{mode}/{name}");
+                    std::fs::write(format!("{site}/games/{file}"), &bytes).unwrap_or_else(|e| die(&e.to_string()));
+                    let rec: Value = serde_json::from_slice(&bytes).unwrap_or_else(|e| die(&format!("{name}: {e}")));
+                    let sbs = storyboards(&rec, &format!("{site}/games/{}", file.trim_end_matches(".json")));
+                    let start: State = serde_json::from_value(rec["start"].clone()).unwrap_or_else(|e| die(&e.to_string()));
+                    let teams = seats(&start).iter().map(|p| start.player(*p).map(|x| x.team.clone()).unwrap_or_default()).collect();
+                    let turns = sbs.iter().map(|sb| (sb["day"].as_u64().unwrap_or(0), sb["names"][sb["player"].to_string()].as_str().unwrap_or("?").to_string())).collect();
+                    games.push(arena::page::Game {
+                        file, first: g["first"].as_str().unwrap_or("").into(), second: g["second"].as_str().unwrap_or("").into(),
+                        result: g["result"].clone(), teams, turns,
+                    });
+                }
+                events.push(arena::page::Event { standings: st, games });
+            }
+            std::fs::write(format!("{site}/index.html"), arena::page::render(&events, &page_links())).unwrap_or_else(|e| die(&e.to_string()));
+            println!("{} modes, {} games in {site}/index.html", events.len(), events.iter().map(|e| e.games.len()).sum::<usize>());
         }
         "round-robin" => {
             let s = start();
@@ -246,7 +278,7 @@ fn main() {
             let mut rows: Vec<_> = table.iter().map(|(n, [w, d, l])| json!({"bot": n, "won": w, "drawn": d, "lost": l, "points": 2 * w + d})).collect();
             rows.sort_by_key(|r| std::cmp::Reverse(r["points"].as_u64().unwrap_or(0)));
             let beacon = seed_for(&o, 0).1;
-            std::fs::write(format!("{dir}/standings.json"), serde_json::to_vec_pretty(&json!({"beacon": beacon, "games": games, "standings": rows})).unwrap()).unwrap();
+            std::fs::write(format!("{dir}/standings.json"), serde_json::to_vec_pretty(&json!({"mode": o.mode.as_ref().map(|m| m["name"].clone()), "title": o.mode.as_ref().map(|m| m["title"].clone()), "beacon": beacon, "games": games, "standings": rows})).unwrap()).unwrap();
             for r in &rows {
                 println!("{:<16} {:>3} won {:>3} drawn {:>3} lost  {} pts", r["bot"].as_str().unwrap(), r["won"], r["drawn"], r["lost"], r["points"]);
             }
