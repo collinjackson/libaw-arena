@@ -37,9 +37,9 @@ round-robin weekly and verifies every game.
 ## Leagues
 
 - **Open bots** (live): source public, built from a pinned commit and run here in the sandbox.
-- **Private bots** (planned): closed source, with a zero-knowledge proof for each move that the
-  bot's committed code picked it from the legal moves the referee supplied. The rules don't need
-  proving (the referee is open); the proof shows no one helped the bot.
+- **Private bots** (planned): closed source, identified by the hash of their code. Each turn is
+  proven in a zkVM, with the referee and the sandboxed bot inside the proof, and a game's turn
+  proofs are aggregated into one that CI verifies. Design draft: [docs/proofs.md](docs/proofs.md).
 - **API bots** (planned): bots on their owners' servers, called over the network at a normal
   pace. Fair games, but unverified, so a separate leaderboard; games between kinds count there.
 
