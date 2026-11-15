@@ -1,0 +1,41 @@
+# Builds the referee and the example bots, plays a round-robin, verifies every game from its
+# record, and keeps the records and standings as an artifact. Weekly, and by hand.
+name: round-robin
+on:
+  workflow_dispatch:
+    inputs:
+      seed:
+        description: "First game's seed"
+        default: "1"
+  schedule:
+    - cron: "0 12 * * 1"
+permissions:
+  contents: read
+jobs:
+  play:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - name: Rust with the wasm target
+        run: rustup target add wasm32-unknown-unknown
+      - name: Build the referee and the bots
+        run: |
+          cargo build --release --locked
+          scripts/build-bots.sh
+          sha256sum bots/out/*.wasm
+      - name: Tests
+        run: cargo test --release --locked
+      - name: Round-robin
+        run: |
+          SEED="${{ github.event.inputs.seed || github.run_number }}"
+          ./target/release/arena round-robin --map maps/skirmish.json --seed "$SEED" --out out/rr \
+            --bot greedy=bots/out/greedy.wasm --bot random=bots/out/random.wasm --bot baseline=bots/out/baseline.wasm
+      - name: Verify every game from its record
+        run: ./target/release/arena verify out/rr/game-*.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: round-robin-${{ github.run_number }}
+          path: |
+            out/rr/
+            bots/out/*.wasm

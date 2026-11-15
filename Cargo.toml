@@ -1,0 +1,9 @@
+[workspace]
+resolver = "2"
+members = ["crates/arena"]
+# Bots build for wasm32-unknown-unknown on their own (scripts/build-bots.sh); they aren't members.
+exclude = ["bots"]
+
+[workspace.package]
+edition = "2021"
+license = "MIT OR Apache-2.0"

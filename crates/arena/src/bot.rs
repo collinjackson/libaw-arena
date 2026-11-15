@@ -1,0 +1,171 @@
+//! A bot as a sandboxed WebAssembly module (docs/bot-abi.md).
+//!
+//! The module may import nothing but `libaw.query`: no WASI, so no clock, randomness, files or
+//! network. Each call runs on a fuel budget (wasmtime's count of executed instructions), so a
+//! bot gets the same budget on any machine and a replay runs out at the same point. Memory is
+//! capped. A bot that traps (out of fuel, a panic, a bad pointer) is re-instantiated before its
+//! next call: its memory between moves is lost, its game goes on.
+
+use libaw::actions::{is_legal, legal_actions, unit_actions};
+use libaw::awbw::{action_from_contract, action_to_contract};
+use libaw::State;
+use serde_json::{json, Value};
+use wasmtime::{Caller, Config, Engine, Extern, Instance, Linker, Module, Store, StoreLimits, StoreLimitsBuilder, TypedFunc};
+
+/// Limits for every bot alike.
+#[derive(Clone, Copy, Debug)]
+pub struct Limits {
+    /// Fuel (roughly instructions) for one `arena_act` call, engine queries included.
+    pub fuel_per_action: u64,
+    /// Linear memory, bytes.
+    pub memory: usize,
+}
+
+impl Default for Limits {
+    fn default() -> Self {
+        Limits { fuel_per_action: 2_000_000_000, memory: 64 << 20 }
+    }
+}
+
+/// What the host functions see during a call: the seat's own view of the game.
+struct Ctx {
+    view: State,
+    limits: StoreLimits,
+    queries: u64,
+}
+
+/// Why a call gave no usable action.
+#[derive(Debug, Clone, PartialEq)]
+pub enum Fault {
+    /// Ran out of fuel.
+    OutOfFuel,
+    /// Trapped otherwise (panic, bad pointer, memory limit), or returned a bad reply.
+    Trap(String),
+}
+
+pub struct Reply {
+    /// The action JSON the bot returned (contract shape), if it returned one.
+    pub action: Result<Value, Fault>,
+    pub fuel_used: u64,
+    pub queries: u64,
+}
+
+pub struct WasmBot {
+    pub name: String,
+    /// sha256 of the module bytes, as recorded in the game.
+    pub hash: String,
+    engine: Engine,
+    module: Module,
+    linker: Linker<Ctx>,
+    limits: Limits,
+    live: Option<(Store<Ctx>, Instance)>,
+}
+
+fn pack(ptr: u32, len: u32) -> i64 {
+    ((ptr as u64) << 32 | len as u64) as i64
+}
+fn unpack(v: i64) -> (usize, usize) {
+    ((v as u64 >> 32) as usize, (v as u64 & 0xffff_ffff) as usize)
+}
+
+/// Answers a bot's engine question against its own view.
+pub fn answer(view: &State, q: &Value) -> Value {
+    match q["q"].as_str() {
+        Some("legal_actions") => legal_actions(view).iter().map(action_to_contract).collect::<Vec<_>>().into(),
+        Some("unit_actions") => match q["unit"].as_u64() {
+            Some(u) => unit_actions(view, u as _).iter().map(action_to_contract).collect::<Vec<_>>().into(),
+            None => json!({"error": "unit_actions needs a unit id"}),
+        },
+        Some("is_legal") => match action_from_contract(view, &q["action"]) {
+            Ok(a) => json!(is_legal(view, &a)),
+            Err(_) => json!(false),
+        },
+        _ => json!({"error": "unknown query; ask legal_actions, unit_actions or is_legal"}),
+    }
+}
+
+impl WasmBot {
+    pub fn new(name: &str, wasm: &[u8], limits: Limits) -> Result<WasmBot, String> {
+        let mut cfg = Config::new();
+        cfg.consume_fuel(true);
+        let engine = Engine::new(&cfg).map_err(|e| e.to_string())?;
+        let module = Module::new(&engine, wasm).map_err(|e| format!("not a wasm module: {e}"))?;
+        for imp in module.imports() {
+            if (imp.module(), imp.name()) != ("libaw", "query") {
+                return Err(format!("imports {}.{}: bots may import only libaw.query", imp.module(), imp.name()));
+            }
+        }
+        let mut linker = Linker::new(&engine);
+        linker
+            .func_wrap("libaw", "query", |mut caller: Caller<'_, Ctx>, ptr: i32, len: i32| -> wasmtime::Result<i64> {
+                let Some(Extern::Memory(mem)) = caller.get_export("memory") else { wasmtime::bail!("no memory export") };
+                let mut buf = vec![0u8; len as u32 as usize];
+                mem.read(&caller, ptr as u32 as usize, &mut buf)?;
+                let q: Value = serde_json::from_slice(&buf).unwrap_or(Value::Null);
+                caller.data_mut().queries += 1;
+                let out = serde_json::to_vec(&answer(&caller.data().view, &q))?;
+                let Some(Extern::Func(alloc)) = caller.get_export("arena_alloc") else { wasmtime::bail!("no arena_alloc export") };
+                let at = alloc.typed::<i32, i32>(&caller)?.call(&mut caller, out.len() as i32)?;
+                mem.write(&mut caller, at as u32 as usize, &out)?;
+                Ok(pack(at as u32, out.len() as u32))
+            })
+            .map_err(|e| e.to_string())?;
+        use sha2::Digest;
+        let hash = format!("{:x}", sha2::Sha256::digest(wasm));
+        Ok(WasmBot { name: name.to_string(), hash, engine, module, linker, limits, live: None })
+    }
+
+    fn instance(&mut self, view: State) -> Result<(), String> {
+        if let Some((store, _)) = &mut self.live {
+            store.data_mut().view = view;
+            store.data_mut().queries = 0;
+            return Ok(());
+        }
+        let limits = StoreLimitsBuilder::new().memory_size(self.limits.memory).instances(1).tables(4).memories(1).build();
+        let mut store = Store::new(&self.engine, Ctx { view, limits, queries: 0 });
+        store.limiter(|c| &mut c.limits);
+        store.set_fuel(self.limits.fuel_per_action).map_err(|e| e.to_string())?;
+        let inst = self.linker.instantiate(&mut store, &self.module).map_err(|e| format!("instantiate: {e}"))?;
+        self.live = Some((store, inst));
+        Ok(())
+    }
+
+    /// One decision: the bot gets `input` (JSON: seat, day and its view) and returns an action.
+    pub fn act(&mut self, input: &Value, view: State) -> Reply {
+        if let Err(e) = self.instance(view) {
+            self.live = None;
+            return Reply { action: Err(Fault::Trap(e)), fuel_used: 0, queries: 0 };
+        }
+        let budget = self.limits.fuel_per_action;
+        let (store, inst) = self.live.as_mut().unwrap();
+        let _ = store.set_fuel(budget);
+        let res = (|| -> wasmtime::Result<Value> {
+            let alloc: TypedFunc<i32, i32> = inst.get_typed_func(&mut *store, "arena_alloc")?;
+            let act: TypedFunc<(i32, i32), i64> = inst.get_typed_func(&mut *store, "arena_act")?;
+            let mem = inst.get_memory(&mut *store, "memory").ok_or_else(|| wasmtime::Error::msg("no memory export"))?;
+            let bytes = serde_json::to_vec(input)?;
+            let at = alloc.call(&mut *store, bytes.len() as i32)?;
+            mem.write(&mut *store, at as u32 as usize, &bytes)?;
+            let (p, n) = unpack(act.call(&mut *store, (at, bytes.len() as i32))?);
+            let mut out = vec![0u8; n];
+            mem.read(&*store, p, &mut out)?;
+            Ok(serde_json::from_slice(&out)?)
+        })();
+        let left = store.get_fuel().unwrap_or(0);
+        let queries = store.data().queries;
+        let fuel_used = budget - left;
+        let action = match res {
+            Ok(v) => Ok(v),
+            Err(e) => {
+                let fault = if left == 0 || matches!(e.downcast_ref::<wasmtime::Trap>(), Some(wasmtime::Trap::OutOfFuel)) {
+                    Fault::OutOfFuel
+                } else {
+                    Fault::Trap(format!("{e:#}").chars().take(300).collect())
+                };
+                self.live = None; // a trapped instance starts fresh next time
+                Err(fault)
+            }
+        };
+        Reply { action, fuel_used, queries }
+    }
+}

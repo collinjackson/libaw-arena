@@ -1,0 +1,10 @@
+[package]
+name = "arena-bot"
+version = "0.1.0"
+edition = "2021"
+license = "MIT OR Apache-2.0"
+publish = false
+description = "The guest side of the arena's bot ABI (docs/bot-abi.md) for Rust bots."
+
+[dependencies]
+serde_json = "1"
