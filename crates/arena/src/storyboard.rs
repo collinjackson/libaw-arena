@@ -53,8 +53,8 @@ fn steps(before: &State, after: &State, a: &Action, contract: &Value) -> Vec<Val
             }
         }
         Action::Power { kind } => {
-            let co = before.player(before.current).map(|p| p.co.clone()).unwrap_or_default();
-            out.push(json!({"type": "power", "player": before.current, "co": co, "name": kind, "super": kind.contains("super")}));
+            let co = before.player(before.current).map(|p| p.co).unwrap_or(libaw::data::Co::NoCO);
+            out.push(json!({"type": "power", "player": before.current, "co": co, "name": kind, "super": *kind == libaw::data::Power::Scop}));
         }
         Action::EndTurn => out.push(json!({"type": "end", "next": after.current})),
     }

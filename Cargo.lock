@@ -435,6 +435,15 @@ dependencies = [
 
 [[package]]
 name = "hashbrown"
+version = "0.15.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9229cfe53dfd69f0609a49f65461bd93001ea1ef889cd5529dd176593f5338a1"
+dependencies = [
+ "serde",
+]
+
+[[package]]
+name = "hashbrown"
 version = "0.16.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "841d1cc9bed7f9236f321df977030373f4a4163ae1a7dbfe1a51a2c1a51d9100"
@@ -492,8 +501,10 @@ checksum = "09edd9e8b54e49e587e4f6295a7d29c3ea94d469cb40ab8ca70b288248a81db2"
 [[package]]
 name = "libaw"
 version = "0.1.0"
-source = "git+https://github.com/collinjackson/libaw#80cff6267636bf609ee4a4e0332d498237ee165b"
+source = "git+https://github.com/collinjackson/libaw#1143d275c29e2f250f011c5f3093d6845aed633c"
 dependencies = [
+ "hashbrown 0.15.5",
+ "libm",
  "serde",
  "serde_json",
 ]
