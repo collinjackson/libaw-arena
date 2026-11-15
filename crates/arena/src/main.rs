@@ -3,6 +3,7 @@
 //!   arena play  --map MAP.json --bot NAME=BOT.wasm --bot NAME=BOT.wasm [--seed N] [--days N] [--fuel N] --out GAME.json
 //!   arena verify GAME.json...
 //!   arena storyboards GAME.json --out DIR       (one libaw storyboard per turn, for libaw's replay viewer)
+//!   arena page RR_DIR --out SITE                (a static page of a round-robin; see src/page.rs)
 //!   arena round-robin --map MAP.json --bot NAME=BOT.wasm... [--seed N] [--days N] [--fuel N] --out DIR
 //!
 //! --beacon ROUND:RANDOMNESS (a drand quicknet round, fetched before the games) replaces --seed:
@@ -107,6 +108,16 @@ fn game(start: &State, names: &[(String, String)], n: u64, o: &Opts) -> Value {
     rec
 }
 
+/// Writes a record's storyboards into `dir` as turn-NNN.json and returns them.
+fn storyboards(rec: &Value, dir: &str) -> Vec<Value> {
+    let sbs = arena::storyboard::turns(rec).unwrap_or_else(|e| die(&e));
+    std::fs::create_dir_all(dir).unwrap_or_else(|e| die(&e.to_string()));
+    for (i, sb) in sbs.iter().enumerate() {
+        std::fs::write(format!("{dir}/turn-{:03}.json", i + 1), serde_json::to_vec(sb).unwrap()).unwrap_or_else(|e| die(&e.to_string()));
+    }
+    sbs
+}
+
 fn main() {
     let args: Vec<String> = std::env::args().skip(1).collect();
     let Some(cmd) = args.first().cloned() else { die("usage: arena play|verify|round-robin ... (see src/main.rs)") };
@@ -137,12 +148,31 @@ fn main() {
             let f = o.rest.first().unwrap_or_else(|| die("arena storyboards GAME.json --out DIR"));
             let dir = o.out.clone().unwrap_or_else(|| die("--out DIR"));
             let rec: Value = serde_json::from_slice(&read(f)).unwrap_or_else(|e| die(&format!("{f}: {e}")));
-            let sbs = arena::storyboard::turns(&rec).unwrap_or_else(|e| die(&e));
-            std::fs::create_dir_all(&dir).unwrap_or_else(|e| die(&e.to_string()));
-            for (i, sb) in sbs.iter().enumerate() {
-                std::fs::write(format!("{dir}/turn-{:03}.json", i + 1), serde_json::to_vec(sb).unwrap()).unwrap();
+            let n = storyboards(&rec, &dir).len();
+            println!("{n} turns in {dir}");
+        }
+        "page" => {
+            let rr = o.rest.first().unwrap_or_else(|| die("arena page RR_DIR --out SITE"));
+            let site = o.out.clone().unwrap_or_else(|| die("--out SITE"));
+            let st: Value = serde_json::from_slice(&read(&format!("{rr}/standings.json"))).unwrap_or_else(|e| die(&e.to_string()));
+            std::fs::create_dir_all(format!("{site}/games")).unwrap_or_else(|e| die(&e.to_string()));
+            let mut games = vec![];
+            for g in st["games"].as_array().into_iter().flatten() {
+                let file = g["file"].as_str().unwrap_or_else(|| die("standings.json: a game without a file")).to_string();
+                let bytes = read(&format!("{rr}/{file}"));
+                std::fs::write(format!("{site}/games/{file}"), &bytes).unwrap_or_else(|e| die(&e.to_string()));
+                let rec: Value = serde_json::from_slice(&bytes).unwrap_or_else(|e| die(&format!("{file}: {e}")));
+                let sbs = storyboards(&rec, &format!("{site}/games/{}", file.trim_end_matches(".json")));
+                let start: State = serde_json::from_value(rec["start"].clone()).unwrap_or_else(|e| die(&e.to_string()));
+                let teams = seats(&start).iter().map(|p| start.player(*p).map(|x| x.team.clone()).unwrap_or_default()).collect();
+                let turns = sbs.iter().map(|sb| (sb["day"].as_u64().unwrap_or(0), sb["names"][sb["player"].to_string()].as_str().unwrap_or("?").to_string())).collect();
+                games.push(arena::page::Game {
+                    file, first: g["first"].as_str().unwrap_or("").into(), second: g["second"].as_str().unwrap_or("").into(),
+                    result: g["result"].clone(), teams, turns,
+                });
             }
-            println!("{} turns in {dir}", sbs.len());
+            std::fs::write(format!("{site}/index.html"), arena::page::render(&st, &games)).unwrap_or_else(|e| die(&e.to_string()));
+            println!("{} games in {site}/index.html", games.len());
         }
         "round-robin" => {
             let s = start();

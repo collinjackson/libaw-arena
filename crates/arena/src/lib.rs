@@ -1,6 +1,7 @@
 //! libaw-arena: sandboxed bot-vs-bot games on libaw's engine (README.md, docs/bot-abi.md).
 pub mod bot;
 pub mod referee;
+pub mod page;
 pub mod storyboard;
 
 use libaw::State;

@@ -12,7 +12,9 @@ the tournament's name is still to be settled.
       --bot greedy=bots/out/greedy.wasm --bot random=bots/out/random.wasm --bot baseline=bots/out/baseline.wasm
     ./target/release/arena verify out/rr/game-*.json
 
-Watch a game in libaw's replay viewer: `arena storyboards out/rr/GAME.json --out out/sb` writes
+`arena page out/rr --out out/site` makes a standings page linking every turn into libaw's
+replay viewer (the workflow adds the viewer; locally, link libaw's `web` and `data` into
+`out/site/libaw/`). Or one game: `arena storyboards out/rr/GAME.json --out out/sb` writes
 one storyboard per turn; serve a folder holding both repos and open
 `libaw/web/replay.html?sb=/libaw-arena/out/sb/turn-005.json&art=awbw`.
 
@@ -22,7 +24,7 @@ round-robin weekly and verifies every game.
 
 ## What works
 
-- `crates/arena`: the referee (`arena play`, `verify`, `round-robin`, `storyboards`). Bots are core WebAssembly
+- `crates/arena`: the referee (`arena play`, `verify`, `round-robin`, `storyboards`, `page`). Bots are core WebAssembly
   modules under wasmtime that may import only `libaw.query`; fuel per action, 64 MiB memory,
   faults end the turn as strikes. Records replay from seed and actions alone.
 - `bots/`: the Rust SDK and three examples: random, greedy, and baseline (libaw's own policy,
@@ -46,8 +48,7 @@ round-robin weekly and verifies every game.
   - **Unverified:** bots on their owners' servers, called over HTTP for each move. The game is
     fair, but nothing shows the moves were unaided. Games between the two kinds count on the
     unverified board only.
-- **Next:** the referee in a container with networking off, publishing standings and
-  replays to a page (arena games in libaw's replay viewer), bot submissions, the unverified board.
+- **Next:** the referee in a container with networking off, hosting the standings page, bot submissions, the unverified board.
 
 ## License
 

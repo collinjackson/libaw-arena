@@ -52,14 +52,21 @@ jobs:
             --bot greedy=bots/out/greedy.wasm --bot random=bots/out/random.wasm --bot baseline=bots/out/baseline.wasm
       - name: Verify every game from its record
         run: ./target/release/arena verify out/rr/game-*.json
-      - name: Storyboards for libaw's replay viewer
+      - uses: actions/checkout@v4
+        with:
+          repository: collinjackson/libaw
+          path: libaw-src
+          sparse-checkout: |
+            web
+            data
+      - name: The standings page, with every turn in libaw's replay viewer
         run: |
-          for g in out/rr/game-*.json; do
-            ./target/release/arena storyboards "$g" --out "out/rr/storyboards/$(basename "$g" .json)"
-          done
+          ./target/release/arena page out/rr --out out/site
+          mkdir -p out/site/libaw && cp -r libaw-src/web libaw-src/data out/site/libaw/
       - uses: actions/upload-artifact@v4
         with:
           name: round-robin-${{ github.run_number }}
           path: |
             out/rr/
+            out/site/
             bots/out/*.wasm
