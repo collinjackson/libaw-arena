@@ -83,6 +83,16 @@ fn example_bots_play_a_verified_game() {
     let rec = play(&skirmish(), &mut bots, 7, Rules::default());
     assert_eq!(rec["strikes"], json!({}));
     assert_eq!(verify(&rec).unwrap(), rec["result"]);
+    // It converts to one libaw storyboard per turn, each ending its turn but maybe the last.
+    let sbs = arena::storyboard::turns(&rec).unwrap();
+    assert!(sbs.len() > 2);
+    for sb in &sbs[..sbs.len() - 1] {
+        assert_eq!(sb["format"], "libaw-storyboard");
+        assert_eq!(sb["steps"].as_array().unwrap().last().unwrap()["type"], "end");
+    }
+    assert_eq!(sbs[0]["names"]["101"], "greedy");
+    let n: usize = sbs.iter().map(|s| s["steps"].as_array().unwrap().iter().filter(|x| x["type"] == "build").count()).sum();
+    assert!(n > 0, "builds show up as build steps");
     // The same seed and bots give the same game.
     let mut again = BTreeMap::from([
         (101, WasmBot::new("greedy", &g, Limits::default()).unwrap()),

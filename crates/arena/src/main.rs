@@ -2,6 +2,7 @@
 //!
 //!   arena play  --map MAP.json --bot NAME=BOT.wasm --bot NAME=BOT.wasm [--seed N] [--days N] [--fuel N] --out GAME.json
 //!   arena verify GAME.json...
+//!   arena storyboards GAME.json --out DIR       (one libaw storyboard per turn, for libaw's replay viewer)
 //!   arena round-robin --map MAP.json --bot NAME=BOT.wasm... [--seed N] [--days N] [--fuel N] --out DIR
 //!
 //! Bots take the seats in turn order (the first --bot moves first). round-robin plays every pair
@@ -100,6 +101,17 @@ fn main() {
                 }
             }
             exit(if bad > 0 { 1 } else { 0 });
+        }
+        "storyboards" => {
+            let f = o.rest.first().unwrap_or_else(|| die("arena storyboards GAME.json --out DIR"));
+            let dir = o.out.clone().unwrap_or_else(|| die("--out DIR"));
+            let rec: Value = serde_json::from_slice(&read(f)).unwrap_or_else(|e| die(&format!("{f}: {e}")));
+            let sbs = arena::storyboard::turns(&rec).unwrap_or_else(|e| die(&e));
+            std::fs::create_dir_all(&dir).unwrap_or_else(|e| die(&e.to_string()));
+            for (i, sb) in sbs.iter().enumerate() {
+                std::fs::write(format!("{dir}/turn-{:03}.json", i + 1), serde_json::to_vec(sb).unwrap()).unwrap();
+            }
+            println!("{} turns in {dir}", sbs.len());
         }
         "round-robin" => {
             let s = start();

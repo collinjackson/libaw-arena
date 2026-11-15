@@ -33,6 +33,11 @@ jobs:
             --bot greedy=bots/out/greedy.wasm --bot random=bots/out/random.wasm --bot baseline=bots/out/baseline.wasm
       - name: Verify every game from its record
         run: ./target/release/arena verify out/rr/game-*.json
+      - name: Storyboards for libaw's replay viewer
+        run: |
+          for g in out/rr/game-*.json; do
+            ./target/release/arena storyboards "$g" --out "out/rr/storyboards/$(basename "$g" .json)"
+          done
       - uses: actions/upload-artifact@v4
         with:
           name: round-robin-${{ github.run_number }}

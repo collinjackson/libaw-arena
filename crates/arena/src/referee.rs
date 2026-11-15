@@ -38,7 +38,7 @@ impl Dice {
     pub fn new(seed: u64) -> Dice {
         Dice(<rand_chacha::ChaCha8Rng as rand_core::SeedableRng>::seed_from_u64(seed))
     }
-    fn step(&mut self, s: &mut State, a: &Action) -> Result<(), String> {
+    pub fn step(&mut self, s: &mut State, a: &Action) -> Result<(), String> {
         let mut rng = self.0.clone();
         let mut roll = |lo: i32, hi: i32| {
             let x = rand_core::RngCore::next_u64(&mut rng);

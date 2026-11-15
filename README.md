@@ -12,13 +12,17 @@ the tournament's name is still to be settled.
       --bot greedy=bots/out/greedy.wasm --bot random=bots/out/random.wasm --bot baseline=bots/out/baseline.wasm
     ./target/release/arena verify out/rr/game-*.json
 
+Watch a game in libaw's replay viewer: `arena storyboards out/rr/GAME.json --out out/sb` writes
+one storyboard per turn; serve a folder holding both repos and open
+`libaw/web/replay.html?sb=/libaw-arena/out/sb/turn-005.json&art=awbw`.
+
 Writing a bot: [docs/bot-abi.md](docs/bot-abi.md). The rules and the game record:
 [docs/arena-rules.md](docs/arena-rules.md). `.github/workflows/round-robin.yml` plays the
 round-robin weekly and verifies every game.
 
 ## What works
 
-- `crates/arena`: the referee (`arena play`, `verify`, `round-robin`). Bots are core WebAssembly
+- `crates/arena`: the referee (`arena play`, `verify`, `round-robin`, `storyboards`). Bots are core WebAssembly
   modules under wasmtime that may import only `libaw.query`; fuel per action, 64 MiB memory,
   faults end the turn as strikes. Records replay from seed and actions alone.
 - `bots/`: the Rust SDK and three examples: random, greedy, and baseline (libaw's own policy,
@@ -32,7 +36,7 @@ round-robin weekly and verifies every game.
 - **Audit trail:** matches run as GitHub Actions in this repo once it is public: pinned commits of
   the referee and every bot, full logs anyone can read, and the replay records as artifacts. The
   referee runs in a container with networking off.
-- **Open bots run sandboxed** as WASI modules under wasmtime: no network, no files, a memory cap,
+- **Open bots run sandboxed** as core WebAssembly modules (no WASI) under wasmtime: no network, no files, a memory cap,
   and a per-move budget in fuel (instructions), so every bot gets the same budget on any machine
   and replays time out at the same point. The engine's questions (`legal_actions`,
   `unit_actions`, `is_legal`) are host functions, so bots stay small.
