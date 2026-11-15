@@ -45,7 +45,7 @@ jobs:
         id: decide
         run: |
           PR=${{ steps.pr.outputs.number }}
-          [ -f verdict/verdict.json ] || echo '{"ok": false, "reasons": ["the check didn't finish"]}' > verdict/verdict.json
+          [ -f verdict/verdict.json ] || echo '{"ok": false, "reasons": ["the check did not finish"]}' > verdict/verdict.json
           gh pr view "$PR" --json author,baseRefOid -q '.author.login + " " + .baseRefOid' > meta.txt
           read -r AUTHOR BASE < meta.txt
           gh pr view "$PR" --json files -q '.files[].path' > files.txt
