@@ -54,7 +54,7 @@ and aggregates them.
 ## Prover
 
 The first target is [Jolt](https://github.com/a16z/jolt): MIT-licensed, fast, and actively
-developed. At git 8a92874, on an earlier and busier benchmark turn, it took 106.4M RV64IMAC cycles and 12.9 GB to trace. Jolt has
+developed. At git 8a92874 the benchmark turn is 48.3M RV64IMAC cycles; its tracer keeps the whole trace in memory (12.9 GB for an earlier, busier turn of 106.4M). Jolt has
 no folding or continuations today. Recursion means running the Jolt verifier as a guest
 (`examples/recursion`, Dory commitments). For long runs Jolt's stated direction is a streaming
 prover with bounded memory, which would let chunks grow from turns to longer stretches.
