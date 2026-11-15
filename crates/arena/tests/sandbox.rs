@@ -100,3 +100,18 @@ fn example_bots_play_a_verified_game() {
     ]);
     assert_eq!(play(&skirmish(), &mut again, 7, Rules::default())["final_hash"], rec["final_hash"]);
 }
+
+#[test]
+fn a_beacon_seed_is_checked() {
+    use arena::referee::beacon_seed;
+    let x = "a".repeat(64);
+    assert_eq!(beacon_seed(&x, 0), beacon_seed(&x.to_uppercase(), 0));
+    assert_ne!(beacon_seed(&x, 0), beacon_seed(&x, 1));
+    let s = skirmish();
+    let mut bots = BTreeMap::from([(101, bot("a", PASS, 1_000_000)), (102, bot("b", PASS, 1_000_000))]);
+    let mut rec = play(&s, &mut bots, beacon_seed(&x, 3), Rules { max_days: 2, ..Rules::default() });
+    rec["beacon"] = json!({"round": 1, "randomness": x, "game": 3});
+    assert!(verify(&rec).is_ok());
+    rec["beacon"]["game"] = json!(4);
+    assert!(verify(&rec).unwrap_err().contains("drand"));
+}

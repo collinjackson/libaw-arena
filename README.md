@@ -46,7 +46,7 @@ round-robin weekly and verifies every game.
   - **Unverified:** bots on their owners' servers, called over HTTP for each move. The game is
     fair, but nothing shows the moves were unaided. Games between the two kinds count on the
     unverified board only.
-- **Next:** drand seeds, the referee in a container with networking off, publishing standings and
+- **Next:** the referee in a container with networking off, publishing standings and
   replays to a page (arena games in libaw's replay viewer), bot submissions, the unverified board.
 
 ## License

@@ -1,12 +1,16 @@
 # Builds the referee and the example bots, plays a round-robin, verifies every game from its
-# record, and keeps the records and standings as an artifact. Weekly, and by hand.
+# record, and keeps the records and standings as an artifact. On every change to a bot, the
+# referee or a map (the quick feedback open bots get), weekly, and by hand.
 name: round-robin
 on:
+  push:
+    branches: [main]
+    paths: ["bots/**", "crates/**", "maps/**", "Cargo.lock", ".github/workflows/round-robin.yml"]
   workflow_dispatch:
     inputs:
       seed:
-        description: "First game's seed"
-        default: "1"
+        description: "First game's seed, to re-run a past event (empty: draw a drand round)"
+        default: ""
   schedule:
     - cron: "0 12 * * 1"
 permissions:
@@ -26,10 +30,25 @@ jobs:
           sha256sum bots/out/*.wasm
       - name: Tests
         run: cargo test --release --locked
+      # The dice come from a drand round that comes out after the bots are built and pinned, so
+      # nobody (us included) knows the luck before the games: the next quicknet round, fetched
+      # once it exists. A seed input overrides it for re-running a past event.
+      - name: Draw the beacon
+        id: beacon
+        if: ${{ !github.event.inputs.seed }}
+        run: |
+          CHAIN=52db9ba70e0cc0f6eaf7803dd07447a1f5477735fd3f661792ba94600c84e971
+          NEXT=$(( $(curl -fsS "https://api.drand.sh/$CHAIN/public/latest" | jq .round) + 1 ))
+          for i in $(seq 20); do
+            R=$(curl -fsS "https://api.drand.sh/$CHAIN/public/$NEXT" | jq -r .randomness) && break
+            sleep 1
+          done
+          echo "drand quicknet round $NEXT: $R"
+          echo "arg=--beacon $NEXT:$R" >> "$GITHUB_OUTPUT"
       - name: Round-robin
         run: |
-          SEED="${{ github.event.inputs.seed || github.run_number }}"
-          ./target/release/arena round-robin --map maps/skirmish.json --seed "$SEED" --out out/rr \
+          ARG="${{ steps.beacon.outputs.arg || format('--seed {0}', github.event.inputs.seed) }}"
+          ./target/release/arena round-robin --map maps/skirmish.json $ARG --out out/rr \
             --bot greedy=bots/out/greedy.wasm --bot random=bots/out/random.wasm --bot baseline=bots/out/baseline.wasm
       - name: Verify every game from its record
         run: ./target/release/arena verify out/rr/game-*.json

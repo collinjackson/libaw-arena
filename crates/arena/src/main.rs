@@ -5,6 +5,9 @@
 //!   arena storyboards GAME.json --out DIR       (one libaw storyboard per turn, for libaw's replay viewer)
 //!   arena round-robin --map MAP.json --bot NAME=BOT.wasm... [--seed N] [--days N] [--fuel N] --out DIR
 //!
+//! --beacon ROUND:RANDOMNESS (a drand quicknet round, fetched before the games) replaces --seed:
+//! game i's seed is referee::beacon_seed(RANDOMNESS, i), and the record says so for verify.
+//!
 //! Bots take the seats in turn order (the first --bot moves first). round-robin plays every pair
 //! twice, once from each seat, with seeds seed, seed+1, ...; it writes each game and standings.json.
 
@@ -27,11 +30,12 @@ struct Opts {
     rules: Rules,
     limits: Limits,
     out: Option<String>,
+    beacon: Option<(u64, String)>,
     rest: Vec<String>,
 }
 
 fn opts(args: &[String]) -> Opts {
-    let mut o = Opts { map: None, bots: vec![], seed: 1, rules: Rules::default(), limits: Limits::default(), out: None, rest: vec![] };
+    let mut o = Opts { map: None, bots: vec![], seed: 1, rules: Rules::default(), limits: Limits::default(), out: None, beacon: None, rest: vec![] };
     let mut i = 0;
     let val = |i: usize| args.get(i + 1).cloned().unwrap_or_else(|| die(&format!("{} needs a value", args[i])));
     while i < args.len() {
@@ -47,6 +51,16 @@ fn opts(args: &[String]) -> Opts {
             "--days" => { o.rules.max_days = val(i).parse().unwrap_or_else(|_| die("--days N")); i += 1; }
             "--fuel" => { o.limits.fuel_per_action = val(i).parse().unwrap_or_else(|_| die("--fuel N")); i += 1; }
             "--out" => { o.out = Some(val(i)); i += 1; }
+            "--beacon" => {
+                let v = val(i);
+                let (r, x) = v.split_once(':').unwrap_or_else(|| die("--beacon ROUND:RANDOMNESS"));
+                let r = r.parse().unwrap_or_else(|_| die("--beacon ROUND:RANDOMNESS"));
+                if x.len() != 64 || !x.chars().all(|c| c.is_ascii_hexdigit()) {
+                    die("drand randomness is 64 hex digits");
+                }
+                o.beacon = Some((r, x.to_ascii_lowercase()));
+                i += 1;
+            }
             a => o.rest.push(a.to_string()),
         }
         i += 1;
@@ -64,7 +78,20 @@ fn seats(start: &State) -> Vec<PlayerId> {
     ps.iter().map(|p| p.id).collect()
 }
 
-fn game(start: &State, names: &[(String, String)], seed: u64, o: &Opts) -> Value {
+/// Game number `n` of this run: its seed, from the beacon if there is one, and the record's
+/// "beacon" entry.
+fn seed_for(o: &Opts, n: u64) -> (u64, Value) {
+    match &o.beacon {
+        Some((round, x)) => (
+            referee::beacon_seed(x, n),
+            json!({"chain": referee::DRAND_CHAIN, "round": round, "randomness": x, "game": n}),
+        ),
+        None => (o.seed + n, Value::Null),
+    }
+}
+
+fn game(start: &State, names: &[(String, String)], n: u64, o: &Opts) -> Value {
+    let (seed, beacon) = seed_for(o, n);
     let order = seats(start);
     if order.len() != names.len() {
         die(&format!("the map has {} seats, {} bots given", order.len(), names.len()));
@@ -73,7 +100,11 @@ fn game(start: &State, names: &[(String, String)], seed: u64, o: &Opts) -> Value
     for (p, (n, path)) in order.iter().zip(names) {
         bots.insert(*p, WasmBot::new(n, &read(path), o.limits).unwrap_or_else(|e| die(&format!("{n}: {e}"))));
     }
-    referee::play(start, &mut bots, seed, o.rules)
+    let mut rec = referee::play(start, &mut bots, seed, o.rules);
+    if !beacon.is_null() {
+        rec["beacon"] = beacon;
+    }
+    rec
 }
 
 fn main() {
@@ -86,7 +117,7 @@ fn main() {
     };
     match cmd.as_str() {
         "play" => {
-            let rec = game(&start(), &o.bots, o.seed, &o);
+            let rec = game(&start(), &o.bots, 0, &o);
             let out = o.out.clone().unwrap_or_else(|| die("--out GAME.json"));
             std::fs::write(&out, serde_json::to_vec(&rec).unwrap()).unwrap_or_else(|e| die(&e.to_string()));
             println!("{} moves; result {}; strikes {}", rec["moves"].as_array().map_or(0, |m| m.len()), rec["result"], rec["strikes"]);
@@ -123,14 +154,15 @@ fn main() {
             }
             let mut table: BTreeMap<String, [u32; 3]> = o.bots.iter().map(|(n, _)| (n.clone(), [0; 3])).collect();
             let mut games = vec![];
-            let mut seed = o.seed;
+            let mut n = 0u64;
             for i in 0..o.bots.len() {
                 for j in 0..o.bots.len() {
                     if i == j {
                         continue;
                     }
                     let pair = [o.bots[i].clone(), o.bots[j].clone()];
-                    let rec = game(&s, &pair, seed, &o);
+                    let rec = game(&s, &pair, n, &o);
+                    let seed = rec["seed"].as_u64().unwrap_or(0);
                     let w = rec["result"]["winner"].as_str().map(str::to_string);
                     let team_of = |k: usize| s.player(order[k]).map(|p| p.team.clone()).unwrap_or_default();
                     for k in 0..2 {
@@ -141,16 +173,17 @@ fn main() {
                             Some(_) => e[2] += 1,
                         }
                     }
-                    let file = format!("{dir}/game-{seed}-{}-vs-{}.json", pair[0].0, pair[1].0);
+                    let file = format!("{dir}/game-{:02}-{}-vs-{}.json", n + 1, pair[0].0, pair[1].0);
                     std::fs::write(&file, serde_json::to_vec(&rec).unwrap()).unwrap();
-                    println!("seed {seed}: {} vs {}: {}", pair[0].0, pair[1].0, rec["result"]);
+                    println!("game {} (seed {seed}): {} vs {}: {}", n + 1, pair[0].0, pair[1].0, rec["result"]);
                     games.push(json!({"file": file.rsplit('/').next(), "seed": seed, "first": pair[0].0, "second": pair[1].0, "result": rec["result"]}));
-                    seed += 1;
+                    n += 1;
                 }
             }
             let mut rows: Vec<_> = table.iter().map(|(n, [w, d, l])| json!({"bot": n, "won": w, "drawn": d, "lost": l, "points": 2 * w + d})).collect();
             rows.sort_by_key(|r| std::cmp::Reverse(r["points"].as_u64().unwrap_or(0)));
-            std::fs::write(format!("{dir}/standings.json"), serde_json::to_vec_pretty(&json!({"games": games, "standings": rows})).unwrap()).unwrap();
+            let beacon = seed_for(&o, 0).1;
+            std::fs::write(format!("{dir}/standings.json"), serde_json::to_vec_pretty(&json!({"beacon": beacon, "games": games, "standings": rows})).unwrap()).unwrap();
             for r in &rows {
                 println!("{:<16} {:>3} won {:>3} drawn {:>3} lost  {} pts", r["bot"].as_str().unwrap(), r["won"], r["drawn"], r["lost"], r["points"]);
             }

@@ -9,7 +9,12 @@
   The game goes on. At most 400 actions a turn; after that the turn is ended for the bot.
 - **The end:** one side left standing wins. After day 30 the game is a draw.
 - **Luck:** every roll comes from ChaCha8 seeded with the game's seed, as in libaw's server.
-  The seed is part of the game record.
+  The seed is part of the game record. In the weekly event it comes from the
+  [drand](https://drand.love) quicknet round published right after the bots are built: game i's
+  seed is the first 8 bytes (big-endian) of sha256(`libaw-arena/RANDOMNESS/i`). The record's
+  `beacon` entry names the round, and `arena verify` checks the seed against it; anyone can
+  fetch the round from `https://api.drand.sh/52db9ba70e0cc0f6eaf7803dd07447a1f5477735fd3f661792ba94600c84e971/public/ROUND`
+  and check the randomness. The workflow log shows the round drawn, and standings.json repeats it.
 - **Standings:** 2 points a win, 1 a draw.
 
 ## Game records

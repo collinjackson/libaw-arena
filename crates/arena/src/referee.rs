@@ -52,6 +52,18 @@ impl Dice {
     }
 }
 
+/// drand's quicknet chain (a round every 3 s), whose rounds seed arena games.
+pub const DRAND_CHAIN: &str = "52db9ba70e0cc0f6eaf7803dd07447a1f5477735fd3f661792ba94600c84e971";
+
+/// The seed for game `game` of an event seeded by a drand round's randomness (hex): the first
+/// 8 bytes of sha256("libaw-arena/RANDOMNESS/GAME"), big-endian. Anyone can fetch the round
+/// (https://api.drand.sh/CHAIN/public/ROUND) and recompute it.
+pub fn beacon_seed(randomness: &str, game: u64) -> u64 {
+    use sha2::Digest;
+    let h = sha2::Sha256::digest(format!("libaw-arena/{}/{game}", randomness.to_ascii_lowercase()));
+    u64::from_be_bytes(h[..8].try_into().unwrap())
+}
+
 /// How the game ended: the winning team (None for a draw), why, and on which day.
 fn outcome(s: &State, rules: &Rules) -> Option<Value> {
     if let Some(t) = sim::winner(s) {
@@ -137,8 +149,15 @@ pub fn verify(rec: &Value) -> Result<Value, String> {
         max_days: rec["rules"]["max_days"].as_u64().unwrap_or(30) as u32,
         max_actions_per_turn: rec["rules"]["max_actions_per_turn"].as_u64().unwrap_or(400) as u32,
     };
+    let seed = rec["seed"].as_u64().ok_or("no seed")?;
+    if let Some(b) = rec.get("beacon").filter(|b| !b.is_null()) {
+        let (Some(r), Some(g)) = (b["randomness"].as_str(), b["game"].as_u64()) else { return Err("beacon needs randomness and game".into()) };
+        if beacon_seed(r, g) != seed {
+            return Err(format!("seed {seed} doesn't come from drand round {}", b["round"]));
+        }
+    }
     let mut s = start;
-    let mut dice = Dice::new(rec["seed"].as_u64().ok_or("no seed")?);
+    let mut dice = Dice::new(seed);
     for (i, m) in rec["moves"].as_array().ok_or("no moves")?.iter().enumerate() {
         if outcome(&s, &rules).is_some() {
             return Err(format!("move {i} comes after the game ended"));
