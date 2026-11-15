@@ -6,6 +6,9 @@
 //!   arena page RR_DIR --out SITE                (a static page of a round-robin; see src/page.rs)
 //!   arena round-robin --map MAP.json --bot NAME=BOT.wasm... [--seed N] [--days N] [--fuel N] --out DIR
 //!
+//! --manifest bots/out/manifest.json (from scripts/build_registry.py) adds its bots, and each
+//! game record names the repo and commit a bot was built from.
+//!
 //! --beacon ROUND:RANDOMNESS (a drand quicknet round, fetched before the games) replaces --seed:
 //! game i's seed is referee::beacon_seed(RANDOMNESS, i), and the record says so for verify.
 //!
@@ -32,11 +35,13 @@ struct Opts {
     limits: Limits,
     out: Option<String>,
     beacon: Option<(u64, String)>,
+    /// Bot name -> {repo, commit}, from --manifest.
+    sources: BTreeMap<String, Value>,
     rest: Vec<String>,
 }
 
 fn opts(args: &[String]) -> Opts {
-    let mut o = Opts { map: None, bots: vec![], seed: 1, rules: Rules::default(), limits: Limits::default(), out: None, beacon: None, rest: vec![] };
+    let mut o = Opts { map: None, bots: vec![], seed: 1, rules: Rules::default(), limits: Limits::default(), out: None, beacon: None, sources: BTreeMap::new(), rest: vec![] };
     let mut i = 0;
     let val = |i: usize| args.get(i + 1).cloned().unwrap_or_else(|| die(&format!("{} needs a value", args[i])));
     while i < args.len() {
@@ -52,6 +57,16 @@ fn opts(args: &[String]) -> Opts {
             "--days" => { o.rules.max_days = val(i).parse().unwrap_or_else(|_| die("--days N")); i += 1; }
             "--fuel" => { o.limits.fuel_per_action = val(i).parse().unwrap_or_else(|_| die("--fuel N")); i += 1; }
             "--out" => { o.out = Some(val(i)); i += 1; }
+            "--manifest" => {
+                let f = val(i);
+                let m: Value = serde_json::from_slice(&read(&f)).unwrap_or_else(|e| die(&format!("{f}: {e}")));
+                for b in m.as_array().unwrap_or_else(|| die("a manifest is a list of bots")) {
+                    let (Some(n), Some(w)) = (b["name"].as_str(), b["wasm"].as_str()) else { die("manifest entries need name and wasm") };
+                    o.bots.push((n.to_string(), w.to_string()));
+                    o.sources.insert(n.to_string(), json!({"repo": b["repo"], "commit": b["commit"]}));
+                }
+                i += 1;
+            }
             "--beacon" => {
                 let v = val(i);
                 let (r, x) = v.split_once(':').unwrap_or_else(|| die("--beacon ROUND:RANDOMNESS"));
@@ -104,6 +119,13 @@ fn game(start: &State, names: &[(String, String)], n: u64, o: &Opts) -> Value {
     let mut rec = referee::play(start, &mut bots, seed, o.rules);
     if !beacon.is_null() {
         rec["beacon"] = beacon;
+    }
+    if let Some(bs) = rec["bots"].as_array_mut() {
+        for b in bs {
+            if let Some(src) = b["name"].as_str().and_then(|n| o.sources.get(n)) {
+                b["source"] = src.clone();
+            }
+        }
     }
     rec
 }

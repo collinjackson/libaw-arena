@@ -2,3 +2,4 @@ target/
 /out/
 bots/*/target/
 bots/out/
+bots/work/

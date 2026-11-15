@@ -7,9 +7,8 @@ the tournament's name is still to be settled.
 ## Try it
 
     rustup target add wasm32-unknown-unknown
-    cargo build --release && scripts/build-bots.sh
-    ./target/release/arena round-robin --map maps/skirmish.json --out out/rr \
-      --bot greedy=bots/out/greedy.wasm --bot random=bots/out/random.wasm --bot baseline=bots/out/baseline.wasm
+    cargo build --release && scripts/build_registry.py
+    ./target/release/arena round-robin --map maps/skirmish.json --manifest bots/out/manifest.json --out out/rr
     ./target/release/arena verify out/rr/game-*.json
 
 `arena page out/rr --out out/site` makes a standings page linking every turn into libaw's
@@ -18,7 +17,8 @@ replay viewer (the workflow adds the viewer; locally, link libaw's `web` and `da
 one storyboard per turn; serve a folder holding both repos and open
 `libaw/web/replay.html?sb=/libaw-arena/out/sb/turn-005.json&art=awbw`.
 
-Writing a bot: [docs/bot-abi.md](docs/bot-abi.md). The rules and the game record:
+Writing a bot: [docs/bot-abi.md](docs/bot-abi.md). Entering one: a pull request to
+[`bots.json`](bots.json), the registry ([docs/submitting.md](docs/submitting.md)). The rules and the game record:
 [docs/arena-rules.md](docs/arena-rules.md). `.github/workflows/round-robin.yml` plays the
 round-robin weekly and verifies every game.
 

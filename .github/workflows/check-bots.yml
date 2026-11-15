@@ -1,0 +1,38 @@
+# A pull request that adds or updates a bot in bots.json: checks the entry, builds the bot at its
+# pinned commit, and plays it against the example bots (both seats, a fixed seed), so the
+# submitter sees right away whether it loads, plays legal moves and stays within its fuel.
+# Runs with a read-only token and no secrets: the bot's code is built and run, nothing else.
+name: check-bots
+on:
+  pull_request:
+    paths: ["bots.json"]
+permissions:
+  contents: read
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Check bots.json
+        run: scripts/build_registry.py --check
+      - name: Rust with the wasm target
+        run: rustup target add wasm32-unknown-unknown
+      - name: Build the referee and the changed bots at their commits
+        run: |
+          cargo build --release --locked
+          scripts/build_registry.py --changed-since "origin/${{ github.base_ref }}"
+      - name: Play them against the examples
+        run: |
+          ./target/release/arena round-robin --map maps/skirmish.json --seed 1 --out out/check --manifest bots/out/manifest.json
+          ./target/release/arena verify out/check/game-*.json
+          echo "Strikes (illegal actions, faults, fuel) per game:"
+          jq -r '.games[] | .file' out/check/standings.json | while read -r f; do
+            echo "  $f: $(jq -c .strikes "out/check/$f")"
+          done
+      - uses: actions/upload-artifact@v4
+        with:
+          name: check-${{ github.event.pull_request.number }}
+          path: out/check/

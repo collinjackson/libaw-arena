@@ -5,7 +5,7 @@ name: round-robin
 on:
   push:
     branches: [main]
-    paths: ["bots/**", "crates/**", "maps/**", "Cargo.lock", ".github/workflows/round-robin.yml"]
+    paths: ["bots.json", "bots/**", "crates/**", "maps/**", "Cargo.lock", ".github/workflows/round-robin.yml"]
   workflow_dispatch:
     inputs:
       seed:
@@ -26,8 +26,7 @@ jobs:
       - name: Build the referee and the bots
         run: |
           cargo build --release --locked
-          scripts/build-bots.sh
-          sha256sum bots/out/*.wasm
+          scripts/build_registry.py
       - name: Tests
         run: cargo test --release --locked
       # The dice come from a drand round that comes out after the bots are built and pinned, so
@@ -48,8 +47,7 @@ jobs:
       - name: Round-robin
         run: |
           ARG="${{ steps.beacon.outputs.arg || format('--seed {0}', github.event.inputs.seed) }}"
-          ./target/release/arena round-robin --map maps/skirmish.json $ARG --out out/rr \
-            --bot greedy=bots/out/greedy.wasm --bot random=bots/out/random.wasm --bot baseline=bots/out/baseline.wasm
+          ./target/release/arena round-robin --map maps/skirmish.json $ARG --out out/rr --manifest bots/out/manifest.json
       - name: Verify every game from its record
         run: ./target/release/arena verify out/rr/game-*.json
       - uses: actions/checkout@v4
@@ -69,4 +67,4 @@ jobs:
           path: |
             out/rr/
             out/site/
-            bots/out/*.wasm
+            bots/out/

@@ -1,5 +1,5 @@
 //! The sandbox's promises, with tiny hand-written bots (WAT), plus a full game with the example
-//! bots when they've been built (scripts/build-bots.sh).
+//! bots when they've been built (scripts/build_registry.py).
 use arena::bot::{Fault, Limits, WasmBot};
 use arena::referee::{play, verify, Rules};
 use serde_json::json;
@@ -73,7 +73,7 @@ fn verify_catches_a_changed_record() {
 fn example_bots_play_a_verified_game() {
     let dir = concat!(env!("CARGO_MANIFEST_DIR"), "/../../bots/out");
     let (Ok(g), Ok(r)) = (std::fs::read(format!("{dir}/greedy.wasm")), std::fs::read(format!("{dir}/random.wasm"))) else {
-        eprintln!("skipped: run scripts/build-bots.sh first");
+        eprintln!("skipped: run scripts/build_registry.py first");
         return;
     };
     let mut bots = BTreeMap::from([

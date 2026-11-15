@@ -1,0 +1,8 @@
+{
+  "about": "Open bots in the arena, each pinned to a commit. To enter or update a bot, open a pull request that adds or changes its entry; the round-robin re-runs when this file changes. See docs/submitting.md.",
+  "open": [
+    {"name": "random", "repo": "", "commit": "", "path": "bots/random"},
+    {"name": "greedy", "repo": "", "commit": "", "path": "bots/greedy"},
+    {"name": "baseline", "repo": "", "commit": "", "path": "bots/baseline"}
+  ]
+}
