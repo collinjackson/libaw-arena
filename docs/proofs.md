@@ -10,15 +10,15 @@ checked by replaying the record (`arena verify`). Proofs are for bots whose code
 2. **Qualifying round.** Each private bot plays a scheduled set of games against the open field.
    Its owner plays and proves every game themselves, and the arena verifies the proofs. This
    ranks private bots with no trusted judge.
-3. **Finals.** The top 8 private bots are invited to a live cut, playing each other, with a
-   judge: AWBW itself, or one trusted with the code (below).
+3. **Finals.** The top 8 private bots are invited to a live cut, playing each other with AWBW as
+   the judge of the rules, and each owner proves their bot played by itself (below).
 
 ## Who holds what
 
 - **Open bots** publish their source and their built module.
 - **Private bots** never send their code to the arena. A module can be decompiled, so the arena
   can't hold it. The owner proves in their own (private) repo's GitHub Actions, or on their own
-  machine, and sends the arena only proofs. In the finals, a bot either plays on AWBW from its owner's machine or is shared with a judge.
+  machine, and sends the arena only proofs. In the finals, a bot plays on AWBW from its owner's machine.
 - **The arena** holds nothing secret and is trusted for nothing. It schedules games, checks
   each proof against a pinned program id, and publishes the results. Anyone can repeat the
   check, so a change to the arena's workflow can't change a result unnoticed. The only thing to
@@ -59,25 +59,31 @@ result and the final state's hash, and optionally the moves, for a replay.
 The proof is wrapped as a **Groth16** proof (a few hundred bytes), and the arena's site verifies
 it in the browser, next to the game's replay. Anyone can verify it again.
 
-## Finals: a judge
+## Finals: a judge for the rules, proofs for the bots
 
-Between two private bots, neither owner can run the other's code. Proving turn by turn doesn't
-work either: no game state is fully public, since even without fog dived Subs and hidden
-Stealths are invisible to the other side, so an owner can't prove legal moves against units they
-can't see.
+Between two private bots, neither owner can run the other's code, and no game state is fully
+public (even without fog, dived Subs and hidden Stealths are invisible to the other side), so
+neither owner can prove the rules were applied. A judge applies them instead: **AWBW itself**,
+playing the finals as invite-only AWBW games with its replays as the record. Each owner runs
+their bot against AWBW from their own machine (the arena would provide the runner that connects
+a module to an AWBW game, as FlakBot does), so no code is shared.
 
-So the finals need a judge. Two ways:
+What the owners prove is that their bot played by itself: the actions their seat took are what
+the committed module picks from the views the judge sent it, with no other input ("no human
+in the loop"). The proof takes the seat's transcript, every view it was sent and every action
+it answered, runs the module in the same sandbox, and outputs the transcript's hash and the
+commitment. The arena rebuilds each seat's views from AWBW's replay with libaw and checks that
+they match.
 
-- **AWBW as the judge.** The finalists play real AWBW games, invite-only, with AWBW's own engine
-  as referee and its replays as the record. Each owner runs their own bot against AWBW (the
-  arena would provide the runner that connects a module to an AWBW game, as FlakBot does), so
-  no one shares code at all. Nothing is proven, but AWBW is the reference the rules come from,
-  and it tests how closely libaw follows them. Needs AWBW's OK, since bot games otherwise stay
-  off its servers.
-- **A judge trusted with the code.** Owners hand their modules to a judge, who plays the games
-  and runs the same game prover as in qualifying. The judge is trusted to keep the code secret
-  and with nothing else: each game still comes with a Groth16 proof. Later the judge could run
-  in a confidential VM whose attestation shows the code it runs.
+- **No hidden information needed**: the transcript is only what the bot saw.
+- **Live play at full speed**: the bot plays natively and the proof is made after the game. A
+  seat with no valid proof by the deadline forfeits.
+- **No stitching**: one proof per seat per game, or one per turn if that's easier to produce.
+  Each is checked on its own.
+
+The other judge is one trusted with the code: owners hand their modules over and the judge runs
+the game prover, as in qualifying, so each game still gets a proof of the rules. The judge is
+trusted only to keep the code secret, which a confidential VM could later take over.
 
 Luck: the seed comes from a drand round fixed in advance, as for open bots
 ([arena-rules.md](arena-rules.md)). The beacon value is a public input, checked outside the proof
@@ -122,5 +128,7 @@ bounded memory.
    faster, but then the proven program would depend on the private module, and its id would no
    longer be a public constant. Is there a way to keep the speed and still rule out extra
    inputs?
-5. Private against private without a judge: committed hidden state and an interactive protocol,
-   as in on-chain fog games. At what cost per turn?
+5. Private against private with no judge at all: committed hidden state and an interactive
+   protocol, as in on-chain fog games. At what cost per turn?
+6. How closely do libaw's views follow AWBW's for the finals' transcripts (fog, dived units)?
+   libaw's replay checker covers the rules; views need their own check.

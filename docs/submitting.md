@@ -58,8 +58,9 @@ each bot says it was built from, next to the sha256 of the module that played.
 Only the owner of a bot's repo should enter or update it.
 
 The arena doesn't rebuild your module from source, so `commit` is your word for what it was
-built from. The template pins the Rust toolchain and the SDK so that anyone can rebuild it and
-compare hashes.
+built from. Build reproducibly so anyone can check it: the template's `build.sh` pins the Rust
+toolchain and the SDK and rewrites machine-specific paths, so the same commit gives the same
+module and sha256 on any machine (a Mac and GitHub's Linux runners agree).
 
 ## Private and API bots
 
