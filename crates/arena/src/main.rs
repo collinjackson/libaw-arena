@@ -8,6 +8,11 @@
 //!   arena start --map MAP.json [--mode NAME] --out STATE.json      (a game's first state)
 //!   arena turn --state STATE.json --bot NAME=BOT.wasm --seed N --out TURN.json [--after STATE.json]
 //!   arena check-turn --state STATE.json TURN.json [--out STATE.json]
+//!   arena spot-check GAME.json --seat ID --beacon ROUND:RANDOMNESS [--k N] --out DIR
+//!
+//! `spot-check` picks N (default 1) of a seat's decisions with a drand round drawn after the
+//! game and writes each one's view (postcard, decision-J.view) and what its proof must show
+//! (decision-J.json: the move, the pick, the view's sha256), for the bot's owner to prove.
 //!
 //! `turn` plays the seat to move's turn of an asynchronous game, the step a bot's owner runs (and,
 //! for a private bot, will prove); `check-turn` is the arena's side: it replays the turn record on
@@ -46,6 +51,8 @@ struct Opts {
     out: Option<String>,
     state: Option<String>,
     after: Option<String>,
+    seat: Option<PlayerId>,
+    k: usize,
     beacon: Option<(u64, String)>,
     /// Bot name -> {repo, commit}, from --manifest.
     sources: BTreeMap<String, Value>,
@@ -55,7 +62,7 @@ struct Opts {
 }
 
 fn opts(args: &[String]) -> Opts {
-    let mut o = Opts { map: None, bots: vec![], seed: 1, rules: Rules::default(), limits: Limits::default(), out: None, state: None, after: None, beacon: None, sources: BTreeMap::new(), mode: None, rest: vec![] };
+    let mut o = Opts { map: None, bots: vec![], seed: 1, rules: Rules::default(), limits: Limits::default(), out: None, state: None, after: None, seat: None, k: 1, beacon: None, sources: BTreeMap::new(), mode: None, rest: vec![] };
     let mut i = 0;
     let val = |i: usize| args.get(i + 1).cloned().unwrap_or_else(|| die(&format!("{} needs a value", args[i])));
     while i < args.len() {
@@ -73,6 +80,8 @@ fn opts(args: &[String]) -> Opts {
             "--out" => { o.out = Some(val(i)); i += 1; }
             "--state" => { o.state = Some(val(i)); i += 1; }
             "--after" => { o.after = Some(val(i)); i += 1; }
+            "--seat" => { o.seat = Some(val(i).parse().unwrap_or_else(|_| die("--seat ID"))); i += 1; }
+            "--k" => { o.k = val(i).parse().unwrap_or_else(|_| die("--k N")); i += 1; }
             "--manifest" => {
                 let f = val(i);
                 let m: Value = serde_json::from_slice(&read(&f)).unwrap_or_else(|e| die(&format!("{f}: {e}")));
@@ -336,6 +345,27 @@ fn main() {
                 }
             }
         }
-        _ => die("usage: arena play|verify|round-robin|start|turn|check-turn ..."),
+        "spot-check" => {
+            let f = o.rest.first().unwrap_or_else(|| die("arena spot-check GAME.json --seat ID --beacon ROUND:RANDOMNESS --out DIR"));
+            let rec: Value = serde_json::from_slice(&read(f)).unwrap_or_else(|e| die(&format!("{f}: {e}")));
+            if let Err(e) = referee::verify(&rec) {
+                die(&format!("{f} doesn't verify: {e}"));
+            }
+            let seat = o.seat.unwrap_or_else(|| die("--seat ID"));
+            let (round, x) = o.beacon.clone().unwrap_or_else(|| die("--beacon ROUND:RANDOMNESS (a drand round after the game)"));
+            let dir = o.out.clone().unwrap_or_else(|| die("--out DIR"));
+            std::fs::create_dir_all(&dir).unwrap_or_else(|e| die(&e.to_string()));
+            let ds = arena::spot::decisions(&rec, seat).unwrap_or_else(|e| die(&e));
+            let module = rec["bots"].as_array().into_iter().flatten().find(|b| b["seat"].as_u64() == Some(seat as u64)).map(|b| b["sha256"].clone()).unwrap_or(Value::Null);
+            for (j, i) in arena::spot::sample(ds.len(), &x, o.k).into_iter().enumerate() {
+                let d = &ds[i];
+                std::fs::write(format!("{dir}/decision-{j}.view"), arena_abi::view_bytes(&d.view)).unwrap_or_else(|e| die(&e.to_string()));
+                let spec = json!({"game": f, "seat": seat, "module_sha256": module, "beacon": {"chain": referee::DRAND_CHAIN, "round": round, "randomness": x},
+                                  "decision": i, "of": ds.len(), "move_index": d.move_index, "pick": d.pick, "view_sha256": arena::spot::view_hash(&d.view)});
+                write_json(&format!("{dir}/decision-{j}.json"), &spec);
+                println!("decision {i} of {} (move {}): pick {}, view sha256 {}", ds.len(), d.move_index, d.pick, spec["view_sha256"]);
+            }
+        }
+        _ => die("usage: arena play|verify|round-robin|start|turn|check-turn|spot-check ..."),
     }
 }

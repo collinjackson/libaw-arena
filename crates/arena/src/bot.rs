@@ -3,8 +3,8 @@
 //! The module may import nothing but `libaw.ask`: no WASI, so no clock, randomness, files or
 //! network. Each call runs on a fuel budget (wasmtime's count of executed instructions), so a
 //! bot gets the same budget on any machine and a replay runs out at the same point. Memory is
-//! capped. A bot that traps (out of fuel, a panic, a bad pointer) is re-instantiated before its
-//! next call: its memory between moves is lost, its game goes on.
+//! capped. Every decision runs on a fresh instance, so a decision depends on its view alone: a
+//! private bot's single decision can then be proven on its own (docs/proofs.md).
 
 use libaw::actions::Action;
 use libaw::State;
@@ -94,12 +94,6 @@ impl WasmBot {
 
     fn instance(&mut self, view: State) -> Result<(), String> {
         let legal = arena_abi::legal(&view);
-        if let Some((store, _)) = &mut self.live {
-            store.data_mut().view = view;
-            store.data_mut().legal = legal;
-            store.data_mut().queries = 0;
-            return Ok(());
-        }
         let limits = StoreLimitsBuilder::new().memory_size(self.limits.memory).instances(1).tables(4).memories(1).build();
         let mut store = Store::new(&self.engine, Ctx { view, legal, limits, queries: 0 });
         store.limiter(|c| &mut c.limits);
@@ -135,7 +129,6 @@ impl WasmBot {
                 } else {
                     Fault::Trap(format!("{e:#}").chars().take(300).collect())
                 };
-                self.live = None; // a trapped instance starts fresh next time
                 Err(fault)
             }
         };

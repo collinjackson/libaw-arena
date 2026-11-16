@@ -151,7 +151,7 @@ pub fn answer(view: &State, legal: &[Action], kind: i32, _arg: i32) -> Vec<u8> {
         // The terrain id of every tile, row by row (u16 each).
         TERRAIN => view.terrain.iter().flat_map(|t| t.to_le_bytes()).collect(),
         // The whole view, as libaw's State in postcard, for bots that bring libaw's engine.
-        VIEW => postcard::to_allocvec(view).unwrap_or_default(),
+        VIEW => view_bytes(view),
         // libaw's baseline policy's choice, as an index into the legal list (u32; u32::MAX to
         // end the turn): libaw's engine work, run natively for any bot that wants a suggestion.
         BASELINE => {
@@ -161,6 +161,11 @@ pub fn answer(view: &State, legal: &[Action], kind: i32, _arg: i32) -> Vec<u8> {
         }
         _ => Vec::new(),
     }
+}
+
+/// A view as postcard bytes: the VIEW answer, and what a decision proof takes and hashes.
+pub fn view_bytes(view: &State) -> Vec<u8> {
+    postcard::to_allocvec(view).unwrap_or_default()
 }
 
 /// One decision's legal list, in the order `LEGAL` answers it and `arena_pick` indexes it.

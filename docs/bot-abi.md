@@ -19,9 +19,11 @@ compiles to a core WebAssembly module with these exports will do.
   instruction), the same on any machine. The host's work answering questions costs no fuel. A
   bot that runs out ends its turn.
 - **Memory:** 64 MiB.
+- **No memory between decisions:** every `arena_pick` call runs on a fresh instance, so a
+  decision depends only on the position. That's what lets a private bot prove a single
+  decision on its own ([proofs.md](proofs.md)).
 - **Faults:** a trap (out of fuel, a panic, a bad pointer) or a pick that isn't in the list ends
-  the bot's turn and counts as a strike. The game goes on. After a trap the bot starts from a
-  fresh instance, so memory kept between calls is lost.
+  the bot's turn and counts as a strike. The game goes on.
 
 ## Exports
 

@@ -191,3 +191,33 @@ fn turns_played_one_at_a_time_are_checked_from_the_state() {
         s = checked;
     }
 }
+
+#[test]
+fn any_decision_replays_on_its_own_for_a_spot_check() {
+    use arena::spot::{decisions, sample};
+    let dir = concat!(env!("CARGO_MANIFEST_DIR"), "/../../bots/out");
+    let (Ok(g), Ok(r)) = (std::fs::read(format!("{dir}/greedy.wasm")), std::fs::read(format!("{dir}/random.wasm"))) else {
+        eprintln!("skipped: run scripts/build_registry.py first");
+        return;
+    };
+    let mut bots = BTreeMap::from([
+        (101, WasmBot::new("greedy", &g, Limits::default()).unwrap()),
+        (102, WasmBot::new("random", &r, Limits::default()).unwrap()),
+    ]);
+    let rec = play(&skirmish(), &mut bots, 11, Rules { max_days: 15, ..Rules::default() });
+    for (seat, wasm) in [(101, &g), (102, &r)] {
+        let ds = decisions(&rec, seat).unwrap();
+        assert!(ds.len() >= 5, "{} decisions", ds.len());
+        // A fresh bot given only that decision's view picks the same, for every decision.
+        let mut fresh = WasmBot::new("again", wasm, Limits::default()).unwrap();
+        for d in &ds {
+            let got = fresh.act(d.view.clone()).action.unwrap().unwrap();
+            let want = if d.pick == -1 { libaw::actions::Action::EndTurn } else { arena_abi::legal(&d.view)[d.pick as usize].clone() };
+            assert_eq!(got, want, "decision at move {}", d.move_index);
+        }
+        let s = sample(ds.len(), &"ab".repeat(32), 5);
+        assert_eq!(s, sample(ds.len(), &"AB".repeat(32), 5));
+        assert_eq!(s.len(), 5);
+        assert!(s.iter().all(|&i| i < ds.len()) && s.iter().collect::<std::collections::BTreeSet<_>>().len() == 5);
+    }
+}
