@@ -9,7 +9,7 @@ crate-type = ["cdylib"]
 
 [dependencies]
 # The arena's Rust SDK, pinned to a commit so your module rebuilds the same.
-arena-bot = { git = "https://github.com/collinjackson/libaw-arena", rev = "66e2142c9927aa59076bc1145e153b04fa30e924" }
+arena-bot = { git = "https://github.com/collinjackson/libaw-arena", rev = "9aa63a4dde86cb5f46e51754ffa886aeb7de0b61" }
 
 [profile.release]
 opt-level = "s"
