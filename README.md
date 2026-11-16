@@ -41,7 +41,7 @@ round-robin weekly and verifies every game.
 - **Private bots** (planned): closed source, identified by a commitment to their module, which
   never leaves the owner. A qualifying round against the open bots, each game played and proven
   by the owner and checked here as a Groth16 proof; then a live top-8 final between private
-  bots. Design draft: [docs/proofs.md](docs/proofs.md).
+  bots with a judge (AWBW itself, or one trusted with the code). Design draft: [docs/proofs.md](docs/proofs.md).
 - **API bots** (planned): bots on their owners' servers, called over the network at a normal
   pace. Fair games, but unverified, so a separate leaderboard; games between kinds count there.
 
