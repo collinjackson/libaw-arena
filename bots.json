@@ -28,9 +28,9 @@
     {
       "name": "arena-example-bot",
       "repo": "https://github.com/collinjackson/arena-example-bot",
-      "commit": "dcbbe5d358160d6b5f32a646d1e11e71bc3450f8",
-      "wasm": "https://github.com/collinjackson/arena-example-bot/releases/download/v2/arena-example-bot.wasm",
-      "sha256": "e3c95946556d56e702bedf73962e137492773e79513313a03c13d468abee2ed2"
+      "commit": "80a9cdc94f846caa79ef62c3bfe8dcf07567c1db",
+      "wasm": "https://github.com/collinjackson/arena-example-bot/releases/download/v3/arena-example-bot.wasm",
+      "sha256": "09cd76902073d24e4b20e6915c6d4b24cc6c61488a850a1bbf23b35d3082df91"
     }
   ]
 }
