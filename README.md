@@ -38,9 +38,10 @@ round-robin weekly and verifies every game.
 
 - **Open bots** (live): source public; the owner publishes the built module and its sha256, and it
   runs here in the sandbox. Start from [templates/bot](templates/bot).
-- **Private bots** (planned): closed source, identified by the hash of their code. Each turn is
-  proven in a zkVM, with the referee and the sandboxed bot inside the proof, and a game's turn
-  proofs are aggregated into one that CI verifies. Design draft: [docs/proofs.md](docs/proofs.md).
+- **Private bots** (planned): closed source, identified by the hash of their module, which never
+  leaves the owner. The owner proves each of the bot's turns in their own repo's Actions with the
+  arena's public turn prover; the arena only verifies proofs and replays the public actions.
+  Design draft: [docs/proofs.md](docs/proofs.md).
 - **API bots** (planned): bots on their owners' servers, called over the network at a normal
   pace. Fair games, but unverified, so a separate leaderboard; games between kinds count there.
 

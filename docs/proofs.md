@@ -1,41 +1,65 @@
 # Proofs (design draft)
 
 Status: a draft for review, not built yet. Open bots don't need any of this: their games are
-checked by replaying the record (`arena verify`). Proofs are for games where replaying isn't
-possible, because a bot's code is private, or isn't enough.
+checked by replaying the record (`arena verify`). Proofs are for bots whose code is private.
 
-## What a proof should show
+## Who holds what
 
-For a game between committed bots, anyone holding only the final proof and the public inputs
-can check that:
+- **Open bots** publish their source and their built module; anyone can run them, and replaying
+  the record checks a game. No proofs needed.
+- **Private bots** never send their code anywhere. A module can be decompiled, so the arena
+  can't hold it either. The bot's owner proves the bot's turns in their own (private) repo's
+  GitHub Actions, or on their own machine, and sends the arena only proofs.
+- **The arena** holds nothing secret and is trusted for nothing. It publishes the game, checks
+  each proof against a pinned program id, and replays the public actions with libaw. Anyone
+  can repeat both checks, so a change to the arena's workflow can't change a result
+  unnoticed.
 
-- every action was legal under libaw's rules;
-- each action was the one its bot's committed code chooses from that bot's own view (fog
-  applied), so no one helped a bot or let it see hidden information;
-- the luck came from the drand round named in the record;
-- the result and final state are what the record says.
+## What a turn proof shows
 
-A private bot is identified by the hash of its code. The proof commits to that hash without
-revealing the code.
+That the actions taken this turn are the ones the bot with hash H chooses, from the game as its
+seat sees it, with no other input, under libaw's rules.
 
-## Shape
+"No other input" is the hard part. If the proven program were the owner's own code, it could
+read an extra private input (a human's advice, say), and its program id wouldn't reveal that. So
+the proven program is the arena's, public and built reproducibly from a tag of this repo, so
+its program id is known: the **turn prover**. It takes:
 
-1. **One proof per turn.** The guest program is the referee for one turn. It takes the
-   commitment to the state before the turn, the seed, and the bot's code hash. It runs the
-   bot sandboxed on its own view, checks and applies each action, and outputs the commitment
-   to the state after the turn plus the actions taken. Actions are public, as the game is
-   played; nothing is adjudicated privately.
-2. **Chain the turns by state commitment.** Turn k's input commitment must equal turn k-1's
-   output.
-3. **Aggregate a game's turn proofs into one.** A recursion guest runs the verifier over N turn
-   proofs, checks the chain, and outputs the first and last commitments and the result. If N is
-   large, repeat as a tree.
-4. **Verify the final proof in a GitHub Actions job**, next to the game record; later, in a
-   browser through WebAssembly.
+- public: the state commitment before the turn, the drand beacon value, the bot hash H;
+- private: the bot's WebAssembly module.
 
-Luck: the seed comes from a drand round fixed before the game, as for open bots
+It checks that the module hashes to H, runs it in the same sandbox as the open league (only
+`libaw.query`, fuel, memory) on the seat's view, applies each action with libaw, and outputs
+the actions, the state commitment after the turn and H. The bot's queries to libaw run as
+native code in the prover; only the bot's own logic runs under the WebAssembly interpreter.
+
+The arena verifies the proof against the turn prover's id, checks that the commitment before the
+turn is the last turn's commitment after, and that H is the hash the bot registered.
+
+## A game
+
+1. A private bot registers `{"name", "repo", "hash"}`: the sha256 of its module, fixed for the
+   season (an update is a new hash).
+2. The arena publishes the game and, on each turn, the state to move from (the beacon round is
+   fixed before the turn starts).
+3. The owner's workflow fetches it, runs the turn prover, and publishes the proof (for example
+   as a release asset in their repo). The arena's workflow fetches it, verifies it, and plays on.
+4. A turn not proven in time ends the turn, like a strike.
+
+Games are asynchronous, like AWBW's, because each turn waits for its owner's prover. Two
+private bots can play each other without either seeing the other's code.
+
+Luck: the seed comes from a drand round fixed before the turn, as for open bots
 ([arena-rules.md](arena-rules.md)). The beacon value is a public input and is checked outside
-the proof against drand's signature, so the referee needs no secret.
+the proof against drand's signature, so the prover needs no secret.
+
+**Fog** is not in the first version. With fog the state is not public, so the owner's prover
+can't see the hidden half, and the arena can't replay the game in public. That needs each side's
+hidden units committed and an interactive protocol (as in on-chain fog games). The private league
+starts with Standard and High Funds only.
+
+Later, a game's turn proofs can be aggregated into one (a recursion guest that verifies N turn
+proofs and checks the chain), so a game is checked by verifying one proof.
 
 ## Sizes
 
@@ -48,8 +72,9 @@ libaw's referee, as a RISC-V guest, in RISC Zero's RV32IM user cycles (Nov 2026)
 | One turn (18 actions) | 28.9M |
 | 15 days (684 actions) | 1.5B |
 
-A game is far too large for one monolithic proof on a laptop, which is why the plan proves turns
-and aggregates them.
+These are libaw's own cycles, without a bot. A private bot's own logic adds its interpreted
+cycles on top; that cost is the first thing to measure. A game is far too large for one proof
+on a laptop, which is another reason to prove turns.
 
 ## Prover
 
@@ -71,6 +96,9 @@ prover with bounded memory, which would let chunks grow from turns to longer str
    or should the guest verify the BLS signature?
 5. Can a final Jolt proof be verified in a browser at reasonable cost, or should it be wrapped
    (for example in Groth16) first?
-6. Bots are WebAssembly modules today. Inside a RISC-V guest they could run under a WebAssembly
-   interpreter, keeping one bot format but costing cycles, or be compiled to RISC-V directly.
-   Which is the better trade?
+6. The turn prover interprets the bot's WebAssembly. Translating it to RISC-V ahead of time would
+   be faster, but then the proven program would depend on the private module, and its id would no
+   longer be a public constant. Is there a way to keep the speed and still rule out extra
+   inputs?
+7. A GitHub-hosted runner (4 cores, 16 GB) has to prove a turn in reasonable time. Which zkVM
+   does that best for a turn of ~30M cycles plus the bot's own?
