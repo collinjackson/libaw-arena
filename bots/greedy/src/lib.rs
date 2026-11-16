@@ -1,36 +1,26 @@
 //! A greedy bot: attack if it can, else capture, else build, else move toward the nearest enemy,
-//! else end the turn. It reads only its input and the engine's legal list.
-use arena_bot::serde_json::{json, Value};
+//! else end the turn. It reads only the legal list and the units it can see.
+use arena_bot::{Legal, ATTACK, CAPTURE, KIND_BUILD, KIND_MOVE, WAIT};
 
-fn tile(v: &Value) -> Option<(i64, i64)> {
-    Some((v[0].as_i64()?, v[1].as_i64()?))
-}
-
-fn act(input: &Value) -> Value {
-    let me = input["seat"].as_u64().unwrap_or(0);
-    let enemies: Vec<(i64, i64)> = input["state"]["units"].as_object().map(|us| {
-        us.values().filter(|u| u["owner"].as_u64() != Some(me)).filter_map(|u| Some((u["x"].as_i64()?, u["y"].as_i64()?))).collect()
-    }).unwrap_or_default();
-    let near = |t: (i64, i64)| enemies.iter().map(|e| (e.0 - t.0).abs() + (e.1 - t.1).abs()).min().unwrap_or(0);
-    let legal = arena_bot::ask(&json!({"q": "legal_actions"}));
-    let score = |a: &Value| -> i64 {
-        match (a["type"].as_str(), a["then"]["type"].as_str()) {
-            (Some("move"), Some("attack")) => 1000,
-            (Some("move"), Some("capture")) => 900,
-            (Some("build"), _) => 800,
-            (Some("move"), Some("wait")) => {
-                let path = a["path"].as_array().cloned().unwrap_or_default();
-                let (from, to) = (path.first().and_then(tile), path.last().and_then(tile));
-                match (from, to) {
-                    // Only moves that get closer; staying put isn't worth an action.
-                    (Some(f), Some(t)) if near(t) < near(f) => 500 - near(t),
-                    _ => -1,
-                }
-            }
+fn pick(seat: u32) -> i32 {
+    let enemies: Vec<(i32, i32)> = arena_bot::units().iter().filter(|u| u.owner != seat).map(|u| (u.x as i32, u.y as i32)).collect();
+    let near = |t: (u8, u8)| enemies.iter().map(|e| (e.0 - t.0 as i32).abs() + (e.1 - t.1 as i32).abs()).min().unwrap_or(0);
+    let score = |a: &Legal| -> i32 {
+        match (a.kind, a.then) {
+            (KIND_MOVE, ATTACK) => 1000,
+            (KIND_MOVE, CAPTURE) => 900,
+            (KIND_BUILD, _) => 800,
+            (KIND_MOVE, WAIT) => match (a.from, a.to) {
+                // Only moves that get closer; staying put isn't worth an action.
+                (Some(f), Some(t)) if near(t) < near(f) => 500 - near(t),
+                _ => -1,
+            },
             _ => -1,
         }
     };
-    legal.as_array().and_then(|l| l.iter().filter(|a| score(a) >= 0).max_by_key(|a| score(a)).cloned())
-        .unwrap_or_else(|| json!({"type": "end_turn"}))
+    let legal = arena_bot::legal();
+    // max_by_key keeps the last of the best, as the JSON version did.
+    (0..legal.len()).filter(|&i| score(&legal[i]) >= 0).max_by_key(|&i| score(&legal[i]))
+        .map_or(arena_bot::END_TURN, |i| i as i32)
 }
-arena_bot::bot!(act);
+arena_bot::bot!(pick);

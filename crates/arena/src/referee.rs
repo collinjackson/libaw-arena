@@ -96,15 +96,10 @@ fn outcome(s: &State, rules: &Rules) -> Option<Value> {
 /// The bot's next action for the seat to move, as the referee will play it: its answer if that's
 /// legal, else the end of its turn with a note saying why (a strike). Also the fuel it used.
 fn choose(s: &State, bot: &mut WasmBot, this_turn: u32, rules: &Rules) -> (Action, Option<String>, u64) {
-    let seen = fog::player_view(s, s.current);
-    let input = json!({"seat": s.current, "day": s.day, "state": serde_json::to_value(&seen).unwrap_or(Value::Null)});
-    let reply = bot.act(&input, seen);
-    let (a, note) = match &reply.action {
-        Ok(v) => match action_for_mover(s, v) {
-            Ok(a) if legal_for_mover(s, &a) => (a, None),
-            Ok(_) => (Action::EndTurn, Some("illegal action".to_string())),
-            Err(e) => (Action::EndTurn, Some(format!("bad action: {e}"))),
-        },
+    let reply = bot.act(fog::player_view(s, s.current));
+    let (a, note) = match reply.action {
+        Ok(Some(a)) if legal_for_mover(s, &a) => (a, None),
+        Ok(_) => (Action::EndTurn, Some("bad pick: not -1 or an index into the legal list".to_string())),
         Err(Fault::OutOfFuel) => (Action::EndTurn, Some("out of fuel".to_string())),
         Err(Fault::Trap(e)) => (Action::EndTurn, Some(format!("fault: {e}"))),
     };

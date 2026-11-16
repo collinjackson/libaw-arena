@@ -1,15 +1,12 @@
-//! A starting point: attack when it can, else capture, else build, else the first legal action.
-use arena_bot::serde_json::{json, Value};
+//! A starting point: attack when it can, else capture, else build, else libaw's baseline pick.
+use arena_bot::{ATTACK, CAPTURE, KIND_BUILD, KIND_MOVE};
 
-fn act(_input: &Value) -> Value {
-    let legal = arena_bot::ask(&json!({"q": "legal_actions"}));
-    let legal = legal.as_array().cloned().unwrap_or_default();
-    let then = |a: &Value, t: &str| a["then"]["type"] == t;
-    legal.iter().find(|a| then(a, "attack"))
-        .or_else(|| legal.iter().find(|a| then(a, "capture")))
-        .or_else(|| legal.iter().find(|a| a["type"] == "build"))
-        .or_else(|| legal.iter().find(|a| a["type"] != "end_turn"))
-        .cloned()
-        .unwrap_or_else(|| json!({"type": "end_turn"}))
+fn pick(_seat: u32) -> i32 {
+    let legal = arena_bot::legal();
+    let first = |f: &dyn Fn(&arena_bot::Legal) -> bool| legal.iter().position(|a| f(a)).map(|i| i as i32);
+    first(&|a| a.kind == KIND_MOVE && a.then == ATTACK)
+        .or_else(|| first(&|a| a.kind == KIND_MOVE && a.then == CAPTURE))
+        .or_else(|| first(&|a| a.kind == KIND_BUILD))
+        .unwrap_or_else(arena_bot::baseline)
 }
-arena_bot::bot!(act);
+arena_bot::bot!(pick);

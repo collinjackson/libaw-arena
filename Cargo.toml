@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-members = ["crates/arena"]
+members = ["crates/arena", "crates/abi"]
 # Bots build for wasm32-unknown-unknown on their own (scripts/build-bots.sh); they aren't members.
 exclude = ["bots", "templates"]
 

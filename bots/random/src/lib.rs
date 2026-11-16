@@ -1,20 +1,16 @@
-//! A random bot: any legal action, picked by a small generator seeded from the input, so the
+//! A random bot: any legal action, picked by a small generator seeded from what it sees, so the
 //! same position always gets the same choice (bots have no clock or randomness of their own).
-use arena_bot::serde_json::{json, Value};
 
-fn act(input: &Value) -> Value {
-    let legal = arena_bot::ask(&json!({"q": "legal_actions"}));
-    let legal = legal.as_array().cloned().unwrap_or_default();
-    if legal.is_empty() {
-        return json!({"type": "end_turn"});
-    }
+fn pick(_seat: u32) -> i32 {
+    let legal = arena_bot::legal();
     // End the turn only now and then, so units get to act.
-    let mut x = input.to_string().bytes().fold(0x9e37_79b9_7f4a_7c15u64, |h, b| (h ^ b as u64).wrapping_mul(0x1000_0000_01b3));
+    let seen = [arena_bot::raw(0, 0), arena_bot::raw(1, 0)].concat();
+    let mut x = seen.iter().fold(0x9e37_79b9_7f4a_7c15u64, |h, b| (h ^ *b as u64).wrapping_mul(0x1000_0000_01b3));
     x ^= x >> 29;
-    let moves: Vec<&Value> = legal.iter().filter(|a| a["type"] != "end_turn").collect();
+    let moves: Vec<usize> = (0..legal.len()).filter(|&i| legal[i].kind != arena_bot::KIND_END_TURN).collect();
     if moves.is_empty() || x % 10 == 0 {
-        return json!({"type": "end_turn"});
+        return arena_bot::END_TURN;
     }
-    moves[(x as usize / 10) % moves.len()].clone()
+    moves[(x as usize / 10) % moves.len()] as i32
 }
-arena_bot::bot!(act);
+arena_bot::bot!(pick);

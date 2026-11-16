@@ -29,10 +29,10 @@ round-robin weekly and verifies every game.
 ## What works
 
 - `crates/arena`: the referee (`arena play`, `verify`, `round-robin`, `storyboards`, `page`). Bots are core WebAssembly
-  modules under wasmtime that may import only `libaw.query`; fuel per action, 64 MiB memory,
+  modules under wasmtime that may import only `libaw.ask`; fuel per action, 64 MiB memory,
   faults end the turn as strikes. Records replay from seed and actions alone.
-- `bots/`: the Rust SDK and three examples: random, greedy, and baseline (libaw's own policy,
-  with the engine compiled into the bot).
+- `bots/`: the Rust SDK and four examples: random, greedy, baseline (libaw's own policy, with
+  the engine compiled into the bot) and hinted (the same policy, asked of the host).
 
 ## Leagues
 

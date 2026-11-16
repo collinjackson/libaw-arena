@@ -18,6 +18,12 @@
       "repo": "",
       "commit": "",
       "path": "bots/baseline"
+    },
+    {
+      "name": "hinted",
+      "repo": "",
+      "commit": "",
+      "path": "bots/hinted"
     }
   ]
 }

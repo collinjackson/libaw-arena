@@ -12,26 +12,27 @@ fn skirmish() -> libaw::State {
 /// A bot that always ends its turn.
 const PASS: &str = r#"(module
   (memory (export "memory") 1)
-  (data (i32.const 1024) "{\"type\":\"end_turn\"}")
-  (global $next (mut i32) (i32.const 4096))
-  (func (export "arena_alloc") (param $n i32) (result i32)
-    (local $p i32) (local.set $p (global.get $next))
-    (global.set $next (i32.add (global.get $next) (local.get $n))) (local.get $p))
-  (func (export "arena_act") (param i32 i32) (result i64)
-    (i64.or (i64.shl (i64.const 1024) (i64.const 32)) (i64.const 19))))"#;
+  (func (export "arena_alloc") (param i32) (result i32) (i32.const 4096))
+  (func (export "arena_pick") (param i32) (result i32) (i32.const -1)))"#;
+
+/// A bot whose pick isn't in the legal list.
+const BAD_PICK: &str = r#"(module
+  (memory (export "memory") 1)
+  (func (export "arena_alloc") (param i32) (result i32) (i32.const 4096))
+  (func (export "arena_pick") (param i32) (result i32) (i32.const 99999)))"#;
 
 /// A bot that never returns.
 const SPIN: &str = r#"(module
   (memory (export "memory") 1)
   (func (export "arena_alloc") (param i32) (result i32) (i32.const 4096))
-  (func (export "arena_act") (param i32 i32) (result i64) (loop $l (br $l)) (i64.const 0)))"#;
+  (func (export "arena_pick") (param i32) (result i32) (loop $l (br $l)) (i32.const 0)))"#;
 
 /// A bot that asks for the clock through WASI.
 const WASI: &str = r#"(module
   (import "wasi_snapshot_preview1" "clock_time_get" (func (param i32 i64 i32) (result i32)))
   (memory (export "memory") 1)
   (func (export "arena_alloc") (param i32) (result i32) (i32.const 0))
-  (func (export "arena_act") (param i32 i32) (result i64) (i64.const 0)))"#;
+  (func (export "arena_pick") (param i32) (result i32) (i32.const -1)))"#;
 
 fn bot(name: &str, wat: &str, fuel: u64) -> WasmBot {
     WasmBot::new(name, wat.as_bytes(), Limits { fuel_per_action: fuel, ..Limits::default() }).unwrap()
@@ -47,7 +48,7 @@ fn imports_other_than_libaw_query_are_refused() {
 fn a_spinning_bot_runs_out_of_fuel_and_the_game_goes_on() {
     let s = skirmish();
     let mut spin = bot("spin", SPIN, 1_000_000);
-    let r = spin.act(&json!({}), s.clone());
+    let r = spin.act(s.clone());
     assert_eq!(r.action, Err(Fault::OutOfFuel));
     assert_eq!(r.fuel_used, 1_000_000);
     // In a game: every one of its turns ends with a strike; the day limit ends it as a draw.
@@ -57,6 +58,14 @@ fn a_spinning_bot_runs_out_of_fuel_and_the_game_goes_on() {
     assert_eq!(rec["strikes"]["101"], 3);
     assert!(rec["strikes"].get("102").is_none());
     assert_eq!(verify(&rec).unwrap()["reason"], "day_limit");
+}
+
+#[test]
+fn a_pick_outside_the_legal_list_is_a_strike() {
+    let mut bots = BTreeMap::from([(101, bot("bad", BAD_PICK, 100_000)), (102, bot("pass", PASS, 100_000))]);
+    let rec = play(&skirmish(), &mut bots, 1, Rules { max_days: 2, ..Rules::default() });
+    assert_eq!(rec["strikes"]["101"], 2);
+    assert!(rec["moves"][0]["note"].as_str().unwrap().starts_with("bad pick"));
 }
 
 #[test]

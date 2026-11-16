@@ -29,7 +29,7 @@ its program id is known: the **turn prover**. It takes:
 - private: the bot's WebAssembly module.
 
 It checks that the module hashes to H, runs it in the same sandbox as the open league (only
-`libaw.query`, fuel, memory) on the seat's view, applies each action with libaw, and outputs
+`libaw.ask`, fuel, memory) on the seat's view, applies each action with libaw, and outputs
 the actions, the state commitment after the turn and H. The bot's queries to libaw run as
 native code in the prover; only the bot's own logic runs under the WebAssembly interpreter.
 
@@ -84,8 +84,11 @@ libaw's referee, as a RISC-V guest, in RISC Zero's RV32IM user cycles (Nov 2026)
 | 15 days (684 actions) | 1.5B |
 
 These are libaw's own cycles, without a bot. A private bot's own logic adds its interpreted
-cycles on top; that cost is the first thing to measure. A game is far too large for one proof
-on a laptop, which is another reason to prove turns.
+cycles on top. With the binary interface ([bot-abi.md](bot-abi.md)), a whole turn through the
+turn prover is 71M cycles for random, 282M for greedy and 387M for a bot that takes the host's
+`BASELINE` suggestion; the JSON interface it replaced cost 2.7–2.8B for the first two. A bot
+that compiles libaw into itself pays for the engine interpreted: 21.5B. A game is far too large
+for one proof on a laptop, which is another reason to prove turns.
 
 ## Prover
 
