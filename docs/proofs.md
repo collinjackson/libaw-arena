@@ -1,54 +1,80 @@
 # Proofs (design draft)
 
-Status: a draft for review, not built yet. Open bots don't need any of this: their games are
+Status: a draft for review, partly built. Open bots don't need any of this: their games are
 checked by replaying the record (`arena verify`). Proofs are for bots whose code is private.
+
+## A season
+
+1. **Open league.** Open bots play each other in the round-robin. No proofs: anyone can rerun
+   the bots and replay the records.
+2. **Qualifying round.** Each private bot plays a scheduled set of games against the open field.
+   Its owner plays and proves every game themselves, and the arena verifies the proofs. This
+   ranks private bots with no trusted judge.
+3. **Finals.** The top 8 private bots are invited to a live cut, playing each other. Neither owner
+   can run the other's code, so each proves their own turns as the game goes on (below).
 
 ## Who holds what
 
-- **Open bots** publish their source and their built module; anyone can run them, and replaying
-  the record checks a game. No proofs needed.
+- **Open bots** publish their source and their built module.
 - **Private bots** never send their code anywhere. A module can be decompiled, so the arena
-  can't hold it either. The bot's owner proves the bot's turns in their own (private) repo's
-  GitHub Actions, or on their own machine, and sends the arena only proofs.
-- **The arena** holds nothing secret and is trusted for nothing. It publishes the game, checks
-  each proof against a pinned program id, and replays the public actions with libaw. Anyone
-  can repeat both checks, so a change to the arena's workflow can't change a result
-  unnoticed.
+  can't hold it either. The owner proves in their own (private) repo's GitHub Actions, or on
+  their own machine, and sends the arena only proofs.
+- **The arena** holds nothing secret and is trusted for nothing. It schedules games, checks
+  each proof against a pinned program id, and publishes the results. Anyone can repeat the
+  check, so a change to the arena's workflow can't change a result unnoticed. The only thing to
+  trust is the verifier, and the site's verifier is public code anyone can run themselves.
 
-## What a turn proof shows
+## Why the proven program is the arena's
 
-That the actions taken this turn are the ones the bot with hash H chooses, from the game as its
-seat sees it, with no other input, under libaw's rules.
+A proof that "the program with id P produced these moves" says nothing useful if P is the
+owner's own program: it could read an extra private input, such as a human's advice, and its id
+wouldn't reveal that. So the proven program is the arena's, built reproducibly from a tag of
+this repo, with a known id. It takes the private bot's module as a private input, checks it
+against the registered commitment, and runs it in the same sandbox as the open league (only
+`libaw.ask`, fuel, memory). The bot's questions are answered by libaw as native code; only the
+bot's own logic runs under the WebAssembly interpreter ([bot-abi.md](bot-abi.md)).
 
-"No other input" is the hard part. If the proven program were the owner's own code, it could
-read an extra private input (a human's advice, say), and its program id wouldn't reveal that. So
-the proven program is the arena's, public and built reproducibly from a tag of this repo, so
-its program id is known: the **turn prover**. It takes:
+A private bot registers `{"name", "repo", "commitment"}`, where the commitment is
+sha256(salt ‖ module), so a module simple enough to guess can't be confirmed by hashing
+candidates. The commitment is fixed for the season; an update is a new entry.
 
-- public: the state commitment before the turn, the drand beacon value, the bot hash H;
-- private: the bot's WebAssembly module.
+## Qualifying: the owner proves whole games
 
-It checks that the module hashes to H, runs it in the same sandbox as the open league (only
-`libaw.ask`, fuel, memory) on the seat's view, applies each action with libaw, and outputs
-the actions, the state commitment after the turn and H. The bot's queries to libaw run as
-native code in the prover; only the bot's own logic runs under the WebAssembly interpreter.
+Against an open bot, the owner can run everything: the referee, the open bot (its module is
+public) and their own. The **game prover** plays a whole game and proves that the game between
+open bot O and private bot C, with dice from drand round R, followed libaw's rules, with each
+bot seeing only its own view, and ended in result X. It outputs O's module hash, C, R, the
+result and the final state's hash, and optionally the moves, for a replay.
 
-The arena verifies the proof against the turn prover's id, checks that the commitment before the
-turn is the last turn's commitment after, and that H is the hash the bot registered.
+- **Fog works.** The prover holds the full state privately and the proof shows that each bot saw
+  only its own view.
+- **One proof per game**, made by one party. No turn-by-turn exchange, nobody has to be online.
+- **No cherry-picking.** The arena schedules each game. Its dice come from a drand round after
+  the bot's commitment is registered, so neither the bot nor its owner could have tuned it to
+  that game's luck. A scheduled game not proven by its deadline is a forfeit, so an owner can't
+  submit only the wins.
+- **Entries are capped per account**, and every entry is shown with its forfeits, so registering
+  many bots to keep the best doesn't hide anything.
 
-## A game
+The proof is wrapped as a **Groth16** proof (a few hundred bytes), and the arena's site verifies
+it in the browser, next to the game's replay. Anyone can verify it again.
 
-1. A private bot registers `{"name", "repo", "hash"}`: the sha256 of its module, fixed for the
-   season (an update is a new hash). Its owner installs the libaw-arena GitHub App on the bot's
-   repo and adds `prove-turn.yml` from [templates/bot](../templates/bot). The app can start and
-   read that repo's workflow runs, and nothing else; it never sees the code.
+## Finals: each owner proves their own turns
+
+Between two private bots, neither owner can run the other's code, so each proves only their own
+turns, with the **turn prover**. It takes the public state before the turn, the beacon value and
+the bot's commitment, with the module as a private input, and outputs the actions and the state
+after the turn. The arena verifies each turn proof, checks that it starts from the last turn's
+state, and plays on.
+
+1. The owner installs the libaw-arena GitHub App on the bot's repo and adds `prove-turn.yml`
+   from [templates/bot](../templates/bot). The app can start and read that repo's workflow
+   runs, and nothing else; it never sees the code.
 2. On each of the bot's turns, the arena publishes the state to move from (on its `turns`
-   branch; the beacon round is fixed before the turn starts) and starts the owner's
-   `prove-turn` workflow through the app. That run is the turn notification.
-3. The owner's run fetches the state, runs the turn prover, and uploads the turn record and its
-   proof as an artifact. The arena's job waits for that run, downloads the artifact, verifies
-   it, and plays on. Actions minutes are free in a public repo, so the waiting costs nothing.
-4. A turn not proven in time ends the turn, like a strike.
+   branch) and starts the owner's `prove-turn` workflow through the app.
+3. The owner's run proves the turn and uploads the turn record and its proof. The arena's job
+   waits for that run, verifies the proof and plays on. A turn not proven in time ends the turn,
+   like a strike.
 
 An owner can also prove on their own machine: the same workflow on a self-hosted runner
 (`runs-on: self-hosted`), which also avoids the Actions minutes a private repo pays for.
@@ -57,20 +83,14 @@ An owner can also prove on their own machine: the same workflow on a self-hosted
 proof: the owner's run plays the turn with `arena turn`, and the arena checks it with
 `arena check-turn`.
 
-Games are asynchronous, like AWBW's, because each turn waits for its owner's prover. Two
-private bots can play each other without either seeing the other's code.
+**Fog is not in the finals at first.** With fog the state isn't public, so a bot's owner can't
+prove legal moves against units they can't see. That needs each side's hidden units committed
+and an interactive protocol, as in on-chain fog games. The finals start with Standard and High
+Funds.
 
-Luck: the seed comes from a drand round fixed before the turn, as for open bots
-([arena-rules.md](arena-rules.md)). The beacon value is a public input and is checked outside
-the proof against drand's signature, so the prover needs no secret.
-
-**Fog** is not in the first version. With fog the state is not public, so the owner's prover
-can't see the hidden half, and the arena can't replay the game in public. That needs each side's
-hidden units committed and an interactive protocol (as in on-chain fog games). The private league
-starts with Standard and High Funds only.
-
-Later, a game's turn proofs can be aggregated into one (a recursion guest that verifies N turn
-proofs and checks the chain), so a game is checked by verifying one proof.
+Luck in both: the seed comes from a drand round fixed in advance, as for open bots
+([arena-rules.md](arena-rules.md)). The beacon value is a public input, checked outside the proof
+against drand's signature.
 
 ## Sizes
 
@@ -83,36 +103,32 @@ libaw's referee, as a RISC-V guest, in RISC Zero's RV32IM user cycles (Nov 2026)
 | One turn (18 actions) | 28.9M |
 | 15 days (684 actions) | 1.5B |
 
-These are libaw's own cycles, without a bot. A private bot's own logic adds its interpreted
-cycles on top. With the binary interface ([bot-abi.md](bot-abi.md)), a whole turn through the
-turn prover is 71M cycles for random, 282M for greedy and 387M for a bot that takes the host's
-`BASELINE` suggestion; the JSON interface it replaced cost 2.7–2.8B for the first two. A bot
-that compiles libaw into itself pays for the engine interpreted: 21.5B. A game is far too large
-for one proof on a laptop, which is another reason to prove turns.
+These are libaw's own cycles, without a bot. A bot's own logic adds its interpreted cycles on
+top. With the binary interface ([bot-abi.md](bot-abi.md)), a whole turn through the turn prover
+is 71M cycles for random, 282M for greedy and 387M for a bot that takes the host's `BASELINE`
+suggestion; the JSON interface it replaced cost 2.7–2.8B for the first two. A bot that compiles
+libaw into itself pays for the engine interpreted: 21.5B. A qualifying game is two bots for
+30–60 turns, so on the order of 5–25B cycles for simple bots.
 
 ## Prover
 
-The first target is [Jolt](https://github.com/a16z/jolt): MIT-licensed, fast, and actively
-developed. At git 8a92874 the benchmark turn is 48.3M RV64IMAC cycles; its tracer keeps the whole trace in memory (12.9 GB for an earlier, busier turn of 106.4M). Jolt has
-no folding or continuations today. Recursion means running the Jolt verifier as a guest
-(`examples/recursion`, Dory commitments). For long runs Jolt's stated direction is a streaming
-prover with bounded memory, which would let chunks grow from turns to longer stretches.
+The first target is [RISC Zero](https://github.com/risc0/risc0): it splits a long run into
+segments and joins their proofs into one receipt, so a whole game is one proof, and it wraps a
+receipt as Groth16. [Jolt](https://github.com/a16z/jolt) is the one to watch: MIT-licensed and
+fast, but with no continuations yet (at git 8a92874 its tracer keeps the whole trace in memory:
+12.9 GB for a turn of 106.4M cycles), and its stated direction is a streaming prover with
+bounded memory.
 
 ## Open questions
 
-1. Is per-turn proving plus verifier-in-guest aggregation the right shape for Jolt? Or is
-   folding over Jolt's sumcheck instances realistic?
+1. How long does proving a qualifying game take on a GitHub-hosted runner (4 cores, 16 GB, 6-hour
+   jobs)? If a game doesn't fit, prove stretches of turns and join them.
 2. Is chaining turns by a state-hash public input enough, or should memory consistency across
    chunks be argued more directly?
-3. Dory or a lattice commitment for the aggregation layer? What verifier cost per inner proof
-   should we expect?
-4. Is checking the drand beacon outside the proof (beacon value as a public input) sound here,
+3. Is checking the drand beacon outside the proof (beacon value as a public input) sound here,
    or should the guest verify the BLS signature?
-5. Can a final Jolt proof be verified in a browser at reasonable cost, or should it be wrapped
-   (for example in Groth16) first?
-6. The turn prover interprets the bot's WebAssembly. Translating it to RISC-V ahead of time would
-   be faster, but then the proven program would depend on the private module, and its id would no
+4. The prover interprets the bot's WebAssembly. Translating it to RISC-V ahead of time would be
+   faster, but then the proven program would depend on the private module, and its id would no
    longer be a public constant. Is there a way to keep the speed and still rule out extra
    inputs?
-7. A GitHub-hosted runner (4 cores, 16 GB) has to prove a turn in reasonable time. Which zkVM
-   does that best for a turn of ~30M cycles plus the bot's own?
+5. Fog between two private bots: which commitment scheme and protocol, at what cost per turn?
