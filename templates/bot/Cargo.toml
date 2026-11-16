@@ -1,0 +1,16 @@
+[package]
+name = "my-bot"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+# The arena's Rust SDK, pinned to a commit so your module rebuilds the same.
+arena-bot = { git = "https://github.com/collinjackson/libaw-arena", rev = "66e2142c9927aa59076bc1145e153b04fa30e924" }
+
+[profile.release]
+opt-level = "s"
+lto = true

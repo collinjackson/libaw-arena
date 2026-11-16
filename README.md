@@ -36,7 +36,8 @@ round-robin weekly and verifies every game.
 
 ## Leagues
 
-- **Open bots** (live): source public, built from a pinned commit and run here in the sandbox.
+- **Open bots** (live): source public; the owner publishes the built module and its sha256, and it
+  runs here in the sandbox. Start from [templates/bot](templates/bot).
 - **Private bots** (planned): closed source, identified by the hash of their code. Each turn is
   proven in a zkVM, with the referee and the sandboxed bot inside the proof, and a game's turn
   proofs are aggregated into one that CI verifies. Design draft: [docs/proofs.md](docs/proofs.md).

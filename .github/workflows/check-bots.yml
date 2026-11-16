@@ -3,9 +3,10 @@
 # so the submitter sees right away whether it loads, plays real, legal moves and stays within
 # its fuel. The verdict it uploads lets auto-merge.yml merge clean updates by a bot's owner.
 #
-# The bot's build runs its own code (build scripts), so it has a job to itself; the games run
-# in a fresh job that only runs our referee on the built modules, and that job writes the
-# verdict. Both have a read-only token and no secrets.
+# Nothing the submitter wrote runs outside the referee's sandbox: their module is downloaded, not
+# built. The example bots are built in the first job; the games run in a fresh job that only runs
+# our referee on the modules, and that job writes the verdict. Both have a read-only token and no
+# secrets.
 name: check-bots
 on:
   pull_request:
@@ -24,7 +25,7 @@ jobs:
         run: python3 scripts/build_registry.py --check
       - name: Rust (the pinned toolchain in rust-toolchain.toml, with the wasm target)
         run: rustup toolchain install
-      - name: Build the changed bots at their commits
+      - name: Fetch the changed bots (and build the examples)
         run: python3 scripts/build_registry.py --changed-since "origin/${{ github.base_ref }}"
       - uses: actions/upload-artifact@v4
         with:

@@ -6,7 +6,7 @@
       made a real move (not only ending turns) in every game it played. Exit 1 if not.
   scripts/automerge.py eligible BASE_BOTS.json HEAD_BOTS.json AUTHOR FILES.txt VERDICT.json
       The PR changes only bots.json, and only one bot in it; the file is valid JSON with no new
-      fields; the author owns the bot's repo (for a removal: owns it, or added the bot); and
+      fields (a submitted bot is name, repo, commit, wasm, sha256); the author owns the bot's repo (for a removal: owns it, or added the bot); and
       the verdict is good for exactly that bot.
       Prints the reasons; exit 0 to merge.
 
@@ -15,7 +15,7 @@ import json, os, subprocess, sys
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
-from build_registry import problems  # noqa: E402
+from build_registry import SUBMITTED, problems  # noqa: E402
 
 
 def owner(repo):
@@ -58,7 +58,7 @@ def verdict(check_dir, changed):
     return {"ok": not reasons and games > 0, "games": games, "strikes": strikes, "changed": sorted(changed), "reasons": reasons}
 
 
-FIELDS = {"name", "repo", "commit", "path"}
+FIELDS = SUBMITTED
 
 
 def added_by(name, repo_slug):

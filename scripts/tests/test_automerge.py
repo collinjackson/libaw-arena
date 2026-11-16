@@ -4,8 +4,11 @@ from automerge import eligible, owner  # noqa: E402
 
 C1, C2 = "a" * 40, "b" * 40
 EX = {"name": "greedy", "repo": "", "commit": "", "path": "bots/greedy"}
-MINE = {"name": "mine", "repo": "https://github.com/Alice/mine", "commit": C1, "path": "."}
-BOB = {"name": "bobs", "repo": "https://github.com/bob/bobs", "commit": C1, "path": "."}
+H1 = "c" * 64
+MINE = {"name": "mine", "repo": "https://github.com/Alice/mine", "commit": C1,
+        "wasm": "https://github.com/Alice/mine/releases/download/v1/mine.wasm", "sha256": H1}
+BOB = {"name": "bobs", "repo": "https://github.com/bob/bobs", "commit": C1,
+       "wasm": "https://github.com/bob/bobs/releases/download/v1/bobs.wasm", "sha256": H1}
 OK = {"ok": True, "changed": ["mine"], "reasons": []}
 NONE = {"ok": True, "changed": [], "reasons": []}
 
