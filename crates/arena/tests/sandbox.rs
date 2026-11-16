@@ -152,3 +152,33 @@ fn in_fog_a_move_into_an_unseen_enemy_is_a_trap_not_a_strike() {
         assert!(arena::storyboard::turns(&rec).is_ok());
     }
 }
+
+#[test]
+fn turns_played_one_at_a_time_are_checked_from_the_state() {
+    use arena::referee::{check_turn, play_turn};
+    let dir = concat!(env!("CARGO_MANIFEST_DIR"), "/../../bots/out");
+    let (Ok(g), Ok(r)) = (std::fs::read(format!("{dir}/greedy.wasm")), std::fs::read(format!("{dir}/random.wasm"))) else {
+        eprintln!("skipped: run scripts/build_registry.py first");
+        return;
+    };
+    let mut bots = [WasmBot::new("greedy", &g, Limits::default()).unwrap(), WasmBot::new("random", &r, Limits::default()).unwrap()];
+    let mut s = skirmish();
+    for t in 0..8u64 {
+        let (rec, after) = play_turn(&s, &mut bots[(t % 2) as usize], 50 + t, Rules::default());
+        assert_eq!(rec["strikes"], 0);
+        let checked = check_turn(&s, &rec).unwrap();
+        assert_eq!(libaw::view::state_hash(&checked), libaw::view::state_hash(&after));
+        assert_ne!(checked.current, s.current, "the turn passes to the other seat");
+        // Not from another state, nor with a changed move, nor cut short.
+        assert!(check_turn(&after, &rec).is_err());
+        let mut bad = rec.clone();
+        bad["moves"][0]["action"] = json!({"type": "end_turn"});
+        if rec["moves"].as_array().unwrap().len() > 1 {
+            assert!(check_turn(&s, &bad).is_err());
+        }
+        let mut short = rec.clone();
+        short["moves"].as_array_mut().unwrap().pop();
+        assert!(check_turn(&s, &short).is_err());
+        s = checked;
+    }
+}

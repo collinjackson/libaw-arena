@@ -5,6 +5,13 @@
 //!   arena storyboards GAME.json --out DIR       (one libaw storyboard per turn, for libaw's replay viewer)
 //!   arena page RR_DIR... --out SITE             (the site: one round-robin per mode; see src/page.rs)
 //!   arena round-robin --map MAP.json --bot NAME=BOT.wasm... [--seed N] [--days N] [--fuel N] --out DIR
+//!   arena start --map MAP.json [--mode NAME] --out STATE.json      (a game's first state)
+//!   arena turn --state STATE.json --bot NAME=BOT.wasm --seed N --out TURN.json [--after STATE.json]
+//!   arena check-turn --state STATE.json TURN.json [--out STATE.json]
+//!
+//! `turn` plays the seat to move's turn of an asynchronous game, the step a bot's owner runs (and,
+//! for a private bot, will prove); `check-turn` is the arena's side: it replays the turn record on
+//! the state and writes the state after.
 //!
 //! --manifest bots/out/manifest.json (from scripts/build_registry.py) adds its bots, and each
 //! game record names the repo and commit a bot was built from.
@@ -37,6 +44,8 @@ struct Opts {
     rules: Rules,
     limits: Limits,
     out: Option<String>,
+    state: Option<String>,
+    after: Option<String>,
     beacon: Option<(u64, String)>,
     /// Bot name -> {repo, commit}, from --manifest.
     sources: BTreeMap<String, Value>,
@@ -46,7 +55,7 @@ struct Opts {
 }
 
 fn opts(args: &[String]) -> Opts {
-    let mut o = Opts { map: None, bots: vec![], seed: 1, rules: Rules::default(), limits: Limits::default(), out: None, beacon: None, sources: BTreeMap::new(), mode: None, rest: vec![] };
+    let mut o = Opts { map: None, bots: vec![], seed: 1, rules: Rules::default(), limits: Limits::default(), out: None, state: None, after: None, beacon: None, sources: BTreeMap::new(), mode: None, rest: vec![] };
     let mut i = 0;
     let val = |i: usize| args.get(i + 1).cloned().unwrap_or_else(|| die(&format!("{} needs a value", args[i])));
     while i < args.len() {
@@ -62,6 +71,8 @@ fn opts(args: &[String]) -> Opts {
             "--days" => { o.rules.max_days = val(i).parse().unwrap_or_else(|_| die("--days N")); i += 1; }
             "--fuel" => { o.limits.fuel_per_action = val(i).parse().unwrap_or_else(|_| die("--fuel N")); i += 1; }
             "--out" => { o.out = Some(val(i)); i += 1; }
+            "--state" => { o.state = Some(val(i)); i += 1; }
+            "--after" => { o.after = Some(val(i)); i += 1; }
             "--manifest" => {
                 let f = val(i);
                 let m: Value = serde_json::from_slice(&read(&f)).unwrap_or_else(|e| die(&format!("{f}: {e}")));
@@ -101,6 +112,16 @@ fn opts(args: &[String]) -> Opts {
 
 fn read(path: &str) -> Vec<u8> {
     std::fs::read(path).unwrap_or_else(|e| die(&format!("{path}: {e}")))
+}
+
+fn write_json(path: &str, v: &Value) {
+    std::fs::write(path, serde_json::to_vec(v).unwrap()).unwrap_or_else(|e| die(&format!("{path}: {e}")));
+}
+
+/// The state from --state STATE.json (as `arena start` or `--after` wrote it).
+fn load(o: &Opts) -> State {
+    let f = o.state.clone().unwrap_or_else(|| die("--state STATE.json"));
+    serde_json::from_slice(&read(&f)).unwrap_or_else(|e| die(&format!("{f}: {e}")))
 }
 
 fn seats(start: &State) -> Vec<PlayerId> {
@@ -283,6 +304,38 @@ fn main() {
                 println!("{:<16} {:>3} won {:>3} drawn {:>3} lost  {} pts", r["bot"].as_str().unwrap(), r["won"], r["drawn"], r["lost"], r["points"]);
             }
         }
-        _ => die("usage: arena play|verify|round-robin ..."),
+        "start" => {
+            let out = o.out.clone().unwrap_or_else(|| die("--out STATE.json"));
+            write_json(&out, &serde_json::to_value(start()).unwrap());
+        }
+        "turn" => {
+            let s = load(&o);
+            let [(n, path)] = &o.bots[..] else { die("turn takes one --bot NAME=BOT.wasm") };
+            let mut bot = WasmBot::new(n, &read(path), o.limits).unwrap_or_else(|e| die(&format!("{n}: {e}")));
+            let (rec, after) = referee::play_turn(&s, &mut bot, o.seed, o.rules);
+            write_json(&o.out.clone().unwrap_or_else(|| die("--out TURN.json")), &rec);
+            if let Some(f) = &o.after {
+                write_json(f, &serde_json::to_value(&after).unwrap());
+            }
+            println!("seat {} day {}: {} actions, {} strikes, result {}", rec["seat"], rec["day"], rec["moves"].as_array().map_or(0, |m| m.len()), rec["strikes"], rec["result"]);
+        }
+        "check-turn" => {
+            let s = load(&o);
+            let f = o.rest.first().unwrap_or_else(|| die("arena check-turn --state STATE.json TURN.json"));
+            let rec: Value = serde_json::from_slice(&read(f)).unwrap_or_else(|e| die(&format!("{f}: {e}")));
+            match referee::check_turn(&s, &rec) {
+                Ok(after) => {
+                    if let Some(out) = &o.out {
+                        write_json(out, &serde_json::to_value(&after).unwrap());
+                    }
+                    println!("{f}: ok, {} actions by {}, after {}", rec["moves"].as_array().map_or(0, |m| m.len()), rec["bot"]["sha256"], rec["after_hash"]);
+                }
+                Err(e) => {
+                    println!("{f}: FAILED: {e}");
+                    exit(1);
+                }
+            }
+        }
+        _ => die("usage: arena play|verify|round-robin|start|turn|check-turn ..."),
     }
 }

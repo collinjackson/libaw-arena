@@ -93,6 +93,27 @@ fn outcome(s: &State, rules: &Rules) -> Option<Value> {
     (s.day > rules.max_days).then(|| json!({"winner": Value::Null, "reason": "day_limit", "day": rules.max_days}))
 }
 
+/// The bot's next action for the seat to move, as the referee will play it: its answer if that's
+/// legal, else the end of its turn with a note saying why (a strike). Also the fuel it used.
+fn choose(s: &State, bot: &mut WasmBot, this_turn: u32, rules: &Rules) -> (Action, Option<String>, u64) {
+    let seen = fog::player_view(s, s.current);
+    let input = json!({"seat": s.current, "day": s.day, "state": serde_json::to_value(&seen).unwrap_or(Value::Null)});
+    let reply = bot.act(&input, seen);
+    let (a, note) = match &reply.action {
+        Ok(v) => match action_for_mover(s, v) {
+            Ok(a) if legal_for_mover(s, &a) => (a, None),
+            Ok(_) => (Action::EndTurn, Some("illegal action".to_string())),
+            Err(e) => (Action::EndTurn, Some(format!("bad action: {e}"))),
+        },
+        Err(Fault::OutOfFuel) => (Action::EndTurn, Some("out of fuel".to_string())),
+        Err(Fault::Trap(e)) => (Action::EndTurn, Some(format!("fault: {e}"))),
+    };
+    if this_turn >= rules.max_actions_per_turn && a != Action::EndTurn {
+        return (Action::EndTurn, Some("action limit for the turn".to_string()), reply.fuel_used);
+    }
+    (a, note, reply.fuel_used)
+}
+
 /// Plays a game. `bots`: one per seat, by player id. Returns the game record.
 pub fn play(start: &State, bots: &mut BTreeMap<PlayerId, WasmBot>, seed: u64, rules: Rules) -> Value {
     let mut s = start.clone();
@@ -106,26 +127,8 @@ pub fn play(start: &State, bots: &mut BTreeMap<PlayerId, WasmBot>, seed: u64, ru
             break r;
         }
         let me = s.current;
-        let seen = fog::player_view(&s, me);
-        let input = json!({"seat": me, "day": s.day, "state": serde_json::to_value(&seen).unwrap_or(Value::Null)});
-        let bot = bots.get_mut(&me).expect("a bot for every seat");
-        let reply = bot.act(&input, seen);
-        *fuel.entry(me).or_default() += reply.fuel_used;
-        // The bot's action, if it gave a legal one; otherwise its turn ends.
-        let (a, note) = match &reply.action {
-            Ok(v) => match action_for_mover(&s, v) {
-                Ok(a) if legal_for_mover(&s, &a) => (a, None),
-                Ok(_) => (Action::EndTurn, Some("illegal action".to_string())),
-                Err(e) => (Action::EndTurn, Some(format!("bad action: {e}"))),
-            },
-            Err(Fault::OutOfFuel) => (Action::EndTurn, Some("out of fuel".to_string())),
-            Err(Fault::Trap(e)) => (Action::EndTurn, Some(format!("fault: {e}"))),
-        };
-        let (a, note) = if this_turn >= rules.max_actions_per_turn && a != Action::EndTurn {
-            (Action::EndTurn, Some("action limit for the turn".to_string()))
-        } else {
-            (a, note)
-        };
+        let (a, note, used) = choose(&s, bots.get_mut(&me).expect("a bot for every seat"), this_turn, &rules);
+        *fuel.entry(me).or_default() += used;
         if note.is_some() {
             *strikes.entry(me).or_default() += 1;
         }
@@ -141,7 +144,7 @@ pub fn play(start: &State, bots: &mut BTreeMap<PlayerId, WasmBot>, seed: u64, ru
             continue;
         }
         this_turn = if a == Action::EndTurn { 0 } else { this_turn + 1 };
-        let mut m = json!({"seat": me, "action": action_to_contract(&a), "fuel": reply.fuel_used});
+        let mut m = json!({"seat": me, "action": action_to_contract(&a), "fuel": used});
         if let Some(n) = note {
             m["note"] = n.into();
         }
@@ -201,4 +204,86 @@ pub fn verify(rec: &Value) -> Result<Value, String> {
         return Err("final state differs from the record".into());
     }
     Ok(got)
+}
+
+pub const TURN_FORMAT: &str = "libaw-arena-turn";
+
+/// One turn of an asynchronous game, where each turn is played (and, for a private bot, proven)
+/// by its bot's owner and sent to the arena: the seat to move plays from `start` with dice from
+/// `seed` until it ends its turn or the game ends. Returns the turn record; `check_turn` checks
+/// it from the state alone, without the bot.
+pub fn play_turn(start: &State, bot: &mut WasmBot, seed: u64, rules: Rules) -> (Value, State) {
+    let mut s = start.clone();
+    let me = s.current;
+    let mut dice = Dice::new(seed);
+    let (mut moves, mut strikes, mut fuel, mut n) = (vec![], 0u32, 0u64, 0u32);
+    while outcome(&s, &rules).is_none() && s.current == me {
+        let (a, note, used) = choose(&s, bot, n, &rules);
+        fuel += used;
+        strikes += note.is_some() as u32;
+        let before = s.clone();
+        let (a, note) = match dice.step(&mut s, &a) {
+            Ok(()) => (a, note),
+            Err(e) => {
+                s = before;
+                let label = view::describe(&s, &a);
+                let _ = dice.step(&mut s, &Action::EndTurn);
+                (Action::EndTurn, Some(format!("engine refused {label}: {e}")))
+            }
+        };
+        n += 1;
+        let mut m = json!({"action": action_to_contract(&a), "fuel": used});
+        if let Some(x) = note {
+            m["note"] = x.into();
+        }
+        moves.push(m);
+    }
+    let rec = json!({
+        "format": TURN_FORMAT, "version": VERSION, "seat": me, "day": start.day, "seed": seed,
+        "rules": {"max_days": rules.max_days, "max_actions_per_turn": rules.max_actions_per_turn},
+        "bot": {"name": bot.name, "sha256": bot.hash},
+        "before_hash": view::state_hash(start), "after_hash": view::state_hash(&s),
+        "moves": moves, "strikes": strikes, "fuel": fuel,
+        "result": outcome(&s, &rules),
+    });
+    (rec, s)
+}
+
+/// Checks a turn record against the state it was played from: the right seat, every action
+/// legal, the turn ended, and the same state after. Returns that state. It shows the moves are
+/// legal; that the bot chose them is what a turn proof adds (docs/proofs.md).
+pub fn check_turn(start: &State, rec: &Value) -> Result<State, String> {
+    if rec["format"] != TURN_FORMAT {
+        return Err("not an arena turn record".into());
+    }
+    if rec["before_hash"].as_str() != Some(view::state_hash(start).as_str()) {
+        return Err("played from a different state".into());
+    }
+    if rec["seat"].as_u64() != Some(start.current as u64) {
+        return Err(format!("seat {} moved on {}'s turn", rec["seat"], start.current));
+    }
+    let rules = Rules {
+        max_days: rec["rules"]["max_days"].as_u64().unwrap_or(30) as u32,
+        max_actions_per_turn: rec["rules"]["max_actions_per_turn"].as_u64().unwrap_or(400) as u32,
+    };
+    let mut s = start.clone();
+    let mut dice = Dice::new(rec["seed"].as_u64().ok_or("no seed")?);
+    let me = s.current;
+    for (i, m) in rec["moves"].as_array().ok_or("no moves")?.iter().enumerate() {
+        if outcome(&s, &rules).is_some() || s.current != me {
+            return Err(format!("move {i} comes after the turn ended"));
+        }
+        let a = action_for_mover(&s, &m["action"]).map_err(|e| format!("move {i}: {e}"))?;
+        if a != Action::EndTurn && (!legal_for_mover(&s, &a) || i as u32 >= rules.max_actions_per_turn) {
+            return Err(format!("move {i}: not legal"));
+        }
+        dice.step(&mut s, &a).map_err(|e| format!("move {i}: {e}"))?;
+    }
+    if outcome(&s, &rules).is_none() && s.current == me {
+        return Err("the turn doesn't end".into());
+    }
+    if rec["after_hash"].as_str() != Some(view::state_hash(&s).as_str()) {
+        return Err("the state after differs from the record".into());
+    }
+    Ok(s)
 }
