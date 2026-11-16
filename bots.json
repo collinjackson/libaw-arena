@@ -24,6 +24,13 @@
       "repo": "",
       "commit": "",
       "path": "bots/hinted"
+    },
+    {
+      "name": "arena-example-bot",
+      "repo": "https://github.com/collinjackson/arena-example-bot",
+      "commit": "dcbbe5d358160d6b5f32a646d1e11e71bc3450f8",
+      "wasm": "https://github.com/collinjackson/arena-example-bot/releases/download/v2/arena-example-bot.wasm",
+      "sha256": "e3c95946556d56e702bedf73962e137492773e79513313a03c13d468abee2ed2"
     }
   ]
 }
