@@ -1,0 +1,49 @@
+# Plays one of this bot's turns when the arena asks (through the libaw-arena GitHub App, which
+# can start this workflow and read its runs): fetches the state from the arena, plays the turn
+# with the arena's referee at the commit the arena names, and uploads the turn record, which the
+# arena downloads and checks. For a private bot this is where the turn will be proven; the module
+# stays in this repo.
+name: prove-turn
+run-name: turn ${{ inputs.request }}
+on:
+  workflow_dispatch:
+    inputs:
+      request: {description: "The arena's id for this turn", required: true}
+      state: {description: "URL of the state to move from", required: true}
+      seed: {description: "The dice for this turn", required: true}
+      arena: {description: "libaw-arena commit to play with", required: true}
+permissions:
+  contents: read
+jobs:
+  turn:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    env:
+      STATE_URL: ${{ inputs.state }}
+      SEED: ${{ inputs.seed }}
+      ARENA: ${{ inputs.arena }}
+    steps:
+      - name: Check the inputs
+        run: |
+          [[ "$STATE_URL" =~ ^https://raw\.githubusercontent\.com/collinjackson/libaw-arena/[0-9a-f]{40}/turns/[0-9-]+/state\.json$ ]] || { echo "state isn't the arena's"; exit 1; }
+          [[ "$SEED" =~ ^[0-9]{1,19}$ && "$ARENA" =~ ^[0-9a-f]{40}$ ]] || { echo "bad seed or arena commit"; exit 1; }
+      - uses: actions/checkout@v4
+      - run: rustup toolchain install
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/bin/arena
+            target
+          key: turn-${{ inputs.arena }}-${{ hashFiles('Cargo.lock') }}
+      - name: The arena's referee
+        run: command -v arena || cargo install --locked --git https://github.com/collinjackson/libaw-arena --rev "$ARENA" libaw-arena
+      - run: cargo build --release --locked --target wasm32-unknown-unknown
+      - name: Play the turn
+        run: |
+          curl -fsS "$STATE_URL" -o state.json
+          arena turn --state state.json --bot "${GITHUB_REPOSITORY##*/}=$(ls target/wasm32-unknown-unknown/release/*.wasm)" --seed "$SEED" --out turn.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: turn
+          path: turn.json

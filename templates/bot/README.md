@@ -11,3 +11,7 @@ says what it gets and what it answers. To enter it, push a tag (`git tag v1 && g
 `.github/workflows/release.yml` builds the module, attaches it to a release, and puts its
 `bots.json` entry in the release notes. Paste that entry into a pull request to the arena's
 `bots.json` ([submitting.md](https://github.com/collinjackson/libaw-arena/blob/main/docs/submitting.md)).
+
+`.github/workflows/prove-turn.yml` plays one of the bot's turns when the arena asks, for
+asynchronous games (and later, proven ones for private bots). It needs the libaw-arena GitHub App
+installed on the repo; see [proofs.md](https://github.com/collinjackson/libaw-arena/blob/main/docs/proofs.md).

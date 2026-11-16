@@ -39,12 +39,23 @@ turn is the last turn's commitment after, and that H is the hash the bot registe
 ## A game
 
 1. A private bot registers `{"name", "repo", "hash"}`: the sha256 of its module, fixed for the
-   season (an update is a new hash).
-2. The arena publishes the game and, on each turn, the state to move from (the beacon round is
-   fixed before the turn starts).
-3. The owner's workflow fetches it, runs the turn prover, and publishes the proof (for example
-   as a release asset in their repo). The arena's workflow fetches it, verifies it, and plays on.
+   season (an update is a new hash). Its owner installs the libaw-arena GitHub App on the bot's
+   repo and adds `prove-turn.yml` from [templates/bot](../templates/bot). The app can start and
+   read that repo's workflow runs, and nothing else; it never sees the code.
+2. On each of the bot's turns, the arena publishes the state to move from (on its `turns`
+   branch; the beacon round is fixed before the turn starts) and starts the owner's
+   `prove-turn` workflow through the app. That run is the turn notification.
+3. The owner's run fetches the state, runs the turn prover, and uploads the turn record and its
+   proof as an artifact. The arena's job waits for that run, downloads the artifact, verifies
+   it, and plays on. Actions minutes are free in a public repo, so the waiting costs nothing.
 4. A turn not proven in time ends the turn, like a strike.
+
+An owner can also prove on their own machine: the same workflow on a self-hosted runner
+(`runs-on: self-hosted`), which also avoids the Actions minutes a private repo pays for.
+
+`.github/workflows/turn.yml` and the template's `prove-turn.yml` run this loop today without the
+proof: the owner's run plays the turn with `arena turn`, and the arena checks it with
+`arena check-turn`.
 
 Games are asynchronous, like AWBW's, because each turn waits for its owner's prover. Two
 private bots can play each other without either seeing the other's code.
