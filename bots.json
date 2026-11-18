@@ -31,6 +31,13 @@
       "commit": "80a9cdc94f846caa79ef62c3bfe8dcf07567c1db",
       "wasm": "https://github.com/collinjackson/arena-example-bot/releases/download/v3/arena-example-bot.wasm",
       "sha256": "09cd76902073d24e4b20e6915c6d4b24cc6c61488a850a1bbf23b35d3082df91"
+    },
+    {
+      "name": "awbw-sim-greedy",
+      "repo": "https://github.com/hevol-awbw/awbw-sim-greedy",
+      "commit": "ff107cf4da17761de4c1957bb323d715fb560db8",
+      "wasm": "https://github.com/hevol-awbw/awbw-sim-greedy/releases/download/v1/awbw-sim-greedy.wasm",
+      "sha256": "3e3df3a1e8c1bfa93ffff35937d2f5d57eb82bfa792da58026f4dd9479ead0fb"
     }
   ]
 }
